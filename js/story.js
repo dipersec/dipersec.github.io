@@ -119,11 +119,12 @@ export function setupStory(g) {
   } });
   S.reaparecer = function* () {
     setState(p, STATE.DEAD);
-    yield fadeTo(1, 0.35, '#000000');
+    g.sound.sfx('dano');
+    yield fadeTo(1, 0.22, '#000000');
     const k = g.checkpoint;
     g.placePlayer(k.x, k.y, 1); p.energy = 3; p.invuln = 1;
-    yield wait(0.25);
-    yield fadeTo(0, 0.45);
+    yield wait(0.08);
+    yield fadeTo(0, 0.3);
   };
 
   // =====================================================================

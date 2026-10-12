@@ -11,7 +11,11 @@ Abre `index.html` desde un servidor (GitHub Pages o `python3 -m http.server`). t
 | Saltar (mantén para llegar más alto) | Espacio o ↑ | Saltar |
 | Examinar, hablar, proyectar el recuerdo | E | ✦ |
 | Avanzar diálogo | Espacio, E o Enter | tocar la pantalla |
-| Pausa / sonido | Esc · M | II |
+| Pausa / sonido / reiniciar | Esc · M · R (en pausa) | II |
+
+También funciona con mando (stick o cruceta, A saltar, X/B acción, Start pausa, gatillo para correr).
+
+**Afinado en vivo:** tecla `` ` `` o `?debug` en la URL abre un panel con todos los valores de `js/config.js` (salto, movimiento, cámara, juice) y la medición de fps y draw calls.
 
 **Pruebas de juego:** `index.html?zona=N` (N = 1 a 6) empieza en esa zona con todo lo anterior resuelto. Sirve para revisar los criterios del documento (orientación, diversión, ritmo, claridad e intriga) sin rejugar todo.
 
@@ -36,6 +40,8 @@ js/world.js     render three.js: diorama low-poly, luz y sombras, paralaje real,
 js/hud.js       HUD, diálogos, visiones y pantallas (canvas 2D)
 js/sprites.js   SpriteSheet + generación del pixel art (DIP 48×86, Tilo 40×60)
 js/textures.js  texturas procedurales HD (costra, roca, piedra, metal, glifos, anillos)
+js/config.js    CONFIG: todos los valores de game feel (salto por altura y tiempo, coyote, buffer, cámara, juice)
+js/debug.js     panel lil-gui para afinar en vivo
 js/pool.js      object pool (partículas, pulsos de los centinelas)
 js/audio.js     Web Audio sintetizado: viento, pasos, cristales, voces y música por zona
 ```

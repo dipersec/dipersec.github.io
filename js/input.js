@@ -3,7 +3,8 @@ export class Input {
   constructor() {
     this.keys = new Set();
     this.touch = { left: false, right: false, run: false, jump: false, act: false };
-    this.pressed = { jump: false, act: false, confirm: false, pause: false, mute: false, any: false };
+    this.pressed = { jump: false, act: false, confirm: false, pause: false, mute: false, any: false, restart: false, debug: false };
+    this.pad = { x: 0, run: false, jump: false, prev: [] };
     window.addEventListener('keydown', (e) => {
       const k = e.key.toLowerCase();
       if ([' ', 'arrowup', 'arrowleft', 'arrowright', 'arrowdown'].includes(k)) e.preventDefault();
@@ -14,6 +15,8 @@ export class Input {
       if (k === 'e' || k === 'x' || k === 'enter') { this.pressed.act = true; this.pressed.confirm = true; }
       if (k === 'escape' || k === 'p') this.pressed.pause = true;
       if (k === 'm') this.pressed.mute = true;
+      if (k === 'r') this.pressed.restart = true;
+      if (k === '`' || k === 'º' || k === '|') this.pressed.debug = true;
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
     window.addEventListener('blur', () => { this.keys.clear(); for (const k in this.touch) this.touch[k] = false; });
@@ -61,11 +64,26 @@ export class Input {
     const end = (e) => { if (e.pointerId !== id) return; id = null; set(0); rest(); };
     zone.addEventListener('pointerup', end); zone.addEventListener('pointercancel', end); zone.addEventListener('lostpointercapture', end);
   }
+  // Mando (Gamepad API): stick o cruceta, A saltar, X/B acción, Start pausa, gatillo o stick a fondo para correr
+  poll() {
+    const gp = navigator.getGamepads ? [...navigator.getGamepads()].find(Boolean) : null;
+    if (!gp) { this.pad.x = 0; this.pad.run = false; this.pad.jump = false; return; }
+    const ax = gp.axes[0] || 0, dz = 0.15, b = (i) => !!gp.buttons[i]?.pressed;
+    let x = Math.abs(ax) > dz ? Math.sign(ax) : 0;
+    if (b(14)) x = -1; if (b(15)) x = 1;
+    this.pad.x = x; this.pad.run = Math.abs(ax) > 0.85 || b(7) || b(5); this.pad.jump = b(0);
+    const edge = (i) => b(i) && !this.pad.prev[i];
+    if (edge(0)) { this.pressed.jump = true; this.pressed.confirm = true; this.pressed.any = true; }
+    if (edge(2) || edge(1)) { this.pressed.act = true; this.pressed.confirm = true; this.pressed.any = true; }
+    if (edge(9)) this.pressed.pause = true;
+    this.pad.prev = gp.buttons.map(k => k.pressed);
+  }
   get x() {
     const k = this.keys;
-    return ((k.has('arrowright') || k.has('d') || this.touch.right) ? 1 : 0) - ((k.has('arrowleft') || k.has('a') || this.touch.left) ? 1 : 0);
+    const kx = ((k.has('arrowright') || k.has('d') || this.touch.right) ? 1 : 0) - ((k.has('arrowleft') || k.has('a') || this.touch.left) ? 1 : 0);
+    return kx || this.pad.x;
   }
-  get run() { return this.keys.has('shift') || this.touch.run; }
-  get jumpHeld() { const k = this.keys; return k.has(' ') || k.has('arrowup') || k.has('w') || k.has('z') || this.touch.jump; }
+  get run() { return this.keys.has('shift') || this.touch.run || this.pad.run; }
+  get jumpHeld() { const k = this.keys; return k.has(' ') || k.has('arrowup') || k.has('w') || k.has('z') || this.touch.jump || this.pad.jump; }
   endFrame() { for (const k in this.pressed) this.pressed[k] = false; }
 }

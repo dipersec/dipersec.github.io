@@ -2,7 +2,8 @@
 // y solo lee este estado.
 import { buildLevel } from './level.js';
 import { createPlayer, updatePlayer, hurtPlayer, setState, STATE } from './player.js';
-import { GRAVITY, PUSH_SPEED, moveAndCollide, overlapRect, groundBelow } from './physics.js';
+import { GRAVITY, moveAndCollide, overlapRect, groundBelow } from './physics.js';
+import { CONFIG } from './config.js';
 import { Pool } from './pool.js';
 import { Director, setupStory } from './story.js';
 
@@ -42,6 +43,7 @@ export class Game {
     this.director = new Director(this);
     setupStory(this);
     this.introPlayed = false;
+    this.prev = { px: 0, py: 0, cx: 0, cy: 0 }; this.alpha = 1; this.hitStop = 0; this.hurtFlash = 0; this.dustT = 0;
     this.touchUI = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
   }
 
@@ -51,11 +53,15 @@ export class Game {
   placePlayer(x, y, face = 1) {
     const p = this.player;
     p.pos.x = x - p.w / 2; p.pos.y = y - p.h; p.vel.x = 0; p.vel.y = 0; p.face = face;
-    p.onGround = false; setState(p, STATE.FALLING);
+    p.onGround = false; setState(p, STATE.FALLING); p.sq = 1;
     this.sec = this.secAt(x);
-    this.snapCamera();
+    this.cam.anchor = undefined;
+    this.snapCamera(); this.savePrev();
   }
   snapCamera() { this.cam.snap = true; }
+  addTrauma(a) { this.cam.shake = Math.min(1, this.cam.shake + a); }
+  // Posiciones del paso anterior: el render interpola entre ambas (paso fijo de 60 Hz)
+  savePrev() { const p = this.player, c = this.cam; this.prev.px = p.pos.x; this.prev.py = p.pos.y; this.prev.cx = c.x; this.prev.cy = c.y; }
   pose(anim) { const p = this.player; p.poseAnim = anim; setState(p, STATE.POSE); p.anim = anim; p.animTime = 0; }
   unpose() { const p = this.player; if (p.state === STATE.POSE) setState(p, STATE.IDLE); }
   showToast(text, dur = 4.5) { this.toast = { text, t: 0, dur }; }
@@ -114,7 +120,7 @@ export class Game {
     }
     if (this.mode === 'fin') { this.updateFade(dt); this.fx.endTitle += dt; if ((inp.pressed.confirm || inp.pressed.any) && this.fx.endTitle > 6) location.reload(); return; }
     if (inp.pressed.pause && !this.director.blocking) this.paused = !this.paused;
-    if (this.paused) return;
+    if (this.paused) { if (inp.pressed.restart) location.reload(); return; }
     this.playTime += dt;
 
     // Diálogo abierto: avanzar texto
@@ -151,12 +157,27 @@ export class Game {
     if (ctl) ctl.jump = false;
     if (!p.hidden) {
       updatePlayer(p, pin, this.solids, dt, this.playerHooks || (this.playerHooks = {
-        onJump: () => { this.sound.sfx('salto'); this.onPlayerJump(); },
-        onLand: () => { this.sound.sfx('caida'); const c = this.playerCenter(); this.burst(c.x, p.pos.y + p.h, 5, [0.93, 0.91, 0.86], { speed: 50, life: 0.4, up: 20, g: 200 }); },
+        onJump: () => {
+          this.sound.sfx('salto'); this.onPlayerJump(); p.sq = CONFIG.stretchJump;
+          const c = this.playerCenter(); this.burst(c.x, p.pos.y + p.h, 5, this.dustColor(), { speed: 45, life: 0.35, up: 10, g: 150, spread: 1.4 });
+        },
+        onLand: () => {
+          // Aterrizaje proporcional a la caída: squash, polvo y, si fue alta, temblor
+          const v = Math.max(0, p.lastFallSpeed || 0), k = Math.min(1, v / 900);
+          this.sound.sfx(k > 0.6 ? 'caida_fuerte' : 'caida');
+          p.sq = 1 - (1 - CONFIG.squashLand) * (0.4 + 0.6 * k);
+          const c = this.playerCenter(); this.burst(c.x, p.pos.y + p.h, Math.round(4 + k * 14), this.dustColor(), { speed: 50 + k * 90, life: 0.45, up: 15 + k * 30, g: 220, spread: 1.6 });
+          if (k > 0.75) this.addTrauma(0.22);
+        },
         onStep: () => this.sound.sfx('paso'),
-        onPush: (s, dir) => { if (s.ent) s.ent.push = dir * PUSH_SPEED; },
+        onPush: (s, dir) => { if (s.ent) s.ent.push = dir * CONFIG.pushSpeed; },
         onCastFire: () => this.castMemory()
       }));
+      p.sq = (p.sq || 1) + (1 - (p.sq || 1)) * (1 - Math.exp(-dt * 4.6 / CONFIG.squashTime));
+      if (p.state === STATE.RUNNING && p.running && p.onGround) {
+        this.dustT -= dt;
+        if (this.dustT <= 0) { this.dustT = CONFIG.runDustEvery; this.burst(p.pos.x + p.w / 2 - p.face * 8, p.pos.y + p.h, 3, this.dustColor(), { speed: 35, life: 0.35, up: 12, g: 120 }); }
+      }
       if (p.state === STATE.PUSHING) { this.pushSnd = (this.pushSnd || 0) - dt; if (this.pushSnd <= 0) { this.pushSnd = 0.45; this.sound.sfx('empujar'); } }
     }
     this.recordHistory();
@@ -413,7 +434,7 @@ export class Game {
     const p = this.player;
     if (this.director.blocking) return;
     if (hurtPlayer(p, fromX)) {
-      this.sound.sfx('dano'); this.cam.shake = Math.max(this.cam.shake, 0.4);
+      this.sound.sfx('dano'); this.addTrauma(0.55); this.hitStop = CONFIG.hitStop; this.hurtFlash = 1;
       const c = this.playerCenter(); this.burst(c.x, c.y, 10, [0.42, 0.67, 0.8], { speed: 90, life: 0.5 });
       if (p.energy <= 0) this.director.run('reaparecer');
     }
@@ -474,20 +495,26 @@ export class Game {
   }
 
   updateCamera(dt) {
-    const p = this.player, cam = this.cam, sec = this.section(), hw = this.view.w / 2, hh = this.view.h / 2;
+    const p = this.player, cam = this.cam, sec = this.section(), hw = this.view.w / 2, hh = this.view.h / 2, C = CONFIG;
+    const damp = (a, b, l) => a + (b - a) * (1 - Math.exp(-l * dt));
     let tx, ty;
+    const feet = p.pos.y + p.h;
+    // Ancla vertical: la cámara no sigue cada salto; solo al pisar suelo o si DIP cae bajo el ancla
+    if (cam.anchor === undefined || p.onGround || feet > cam.anchor + C.camAnchorDrop || p.hidden) cam.anchor = feet;
     if (cam.fix) { tx = cam.fix.x; ty = cam.fix.y; }
     else {
-      cam.look += ((p.face * 55) - cam.look) * Math.min(1, dt * 1.6);
+      // Look-ahead: mira hacia donde va DIP (y un poco más si corre)
+      cam.look = damp(cam.look, p.face * C.camLookAhead + p.vel.x * 0.18, C.camLookLambda);
       tx = p.pos.x + p.w / 2 + cam.look;
-      ty = p.pos.y + p.h - 105 + (this.dialog && !this.touchUI ? 70 : 0);
+      ty = cam.anchor - 105 + (this.dialog && !this.touchUI ? 70 : 0);
       tx = Math.max(sec.x0 + hw, Math.min(sec.x1 - hw, tx));
       const y0 = sec.yMin + hh, y1 = sec.yMax - hh;
       ty = y0 > y1 ? (y0 + y1) / 2 : Math.max(y0, Math.min(y1, ty));
     }
-    if (cam.snap) { cam.x = tx; cam.y = ty; cam.snap = false; }
-    else { const k = Math.min(1, dt * cam.speed); cam.x += (tx - cam.x) * k; cam.y += (ty - cam.y) * Math.min(1, dt * cam.speed * 0.8); }
-    cam.shake = Math.max(0, cam.shake - dt * 1.2);
+    if (cam.snap) { cam.x = tx; cam.y = ty; cam.snap = false; this.savePrev(); }
+    else if (cam.fix) { cam.x = damp(cam.x, tx, cam.speed); cam.y = damp(cam.y, ty, cam.speed * 0.8); }
+    else { cam.x = damp(cam.x, tx, C.camFollowX); cam.y = damp(cam.y, ty, C.camFollowY); }
+    cam.shake = Math.max(0, cam.shake - dt * C.shakeDecay);
     // zona visual según la cámara (para el clima y la luz)
     const zs = this.L.zones.find(z => cam.x >= z.x0 && cam.x < z.x1);
     if (this.mode === 'titulo') this.envName = 'titulo';
@@ -500,7 +527,9 @@ export class Game {
     const f = this.fade;
     if (f.a < f.target) f.a = Math.min(f.target, f.a + dt * f.speed); else if (f.a > f.target) f.a = Math.max(f.target, f.a - dt * f.speed);
   }
+  dustColor() { const e = this.envName; return ['santuario', 'estacion', 'huida', 'alarma'].includes(e) ? [0.55, 0.75, 0.85] : [0.93, 0.91, 0.86]; }
   updateTimers(dt) {
+    this.hurtFlash = Math.max(0, this.hurtFlash - dt * 2.5);
     if (this.toast) { this.toast.t += dt; if (this.toast.t > this.toast.dur) this.toast = null; }
     if (this.hint) { this.hint.t += dt; if (this.hint.t > this.hint.dur) this.hint = null; }
     if (this.zoneCard) { this.zoneCard.t += dt; if (this.zoneCard.t > 4.5) this.zoneCard = null; }

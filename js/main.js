@@ -5,6 +5,8 @@ import { Input } from './input.js';
 import { Game } from './game.js';
 import { World } from './world.js';
 import { Hud } from './hud.js';
+import { CONFIG } from './config.js';
+import { setupDebug } from './debug.js';
 
 const $ = (s) => document.querySelector(s);
 const bar = $('#carga-barra'), label = $('#carga-texto');
@@ -32,7 +34,8 @@ async function boot() {
   const game = new Game(sound, input);
   const world = new World($('#mundo'), game, assets);
   const hud = new Hud($('#hud'), game, world, assets);
-  window.__dip = game;
+  window.__dip = game; window.__world = world;
+  setupDebug(game, world);
   const zona = Number(new URLSearchParams(location.search).get('zona'));
   if (zona >= 1 && zona <= 6) game.skipTo(zona);
 
@@ -53,13 +56,21 @@ async function boot() {
   $('#carga').classList.add('lista');
   setTimeout(() => $('#carga').remove(), 700); // solo para retirar la pantalla de carga del DOM
 
-  let last = performance.now();
+  // Bucle: física con paso fijo de 60 Hz (el salto es idéntico en cualquier pantalla) y render interpolado.
+  // El hit-stop congela la lógica unos milisegundos mientras el render sigue.
+  let last = performance.now(), acc = 0;
   function loop(now) {
-    // Paso de lógica de máximo 1/30 s: si un cuadro tarda más, se divide en varios pasos
-    // (la velocidad real no cambia y nunca se atraviesa un suelo).
-    const frame = Math.min((now - last) / 1000, 0.1); last = now;
-    const n = Math.max(1, Math.ceil(frame / (1 / 30))), dt = frame / n;
-    for (let i = 0; i < n; i++) { game.update(dt); if (i === 0) input.endFrame(); }
+    const frame = Math.min((now - last) / 1000, 0.25); last = now;
+    input.poll();
+    if (game.hitStop > 0) game.hitStop = Math.max(0, game.hitStop - frame);
+    else acc += frame;
+    let steps = 0;
+    while (acc >= CONFIG.step && steps < 8) {
+      game.savePrev(); game.update(CONFIG.step); acc -= CONFIG.step;
+      if (steps++ === 0) input.endFrame();
+    }
+    if (steps === 8) acc = 0;
+    game.alpha = acc / CONFIG.step;
     world.draw(frame, frame);
     hud.draw();
     requestAnimationFrame(loop);

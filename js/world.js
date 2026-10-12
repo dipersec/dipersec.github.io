@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { makeTextures, worldUV } from './textures.js';
+import { CONFIG } from './config.js';
 
 const FOV = 34;
 const Z_SPRITE = 44;
@@ -601,14 +602,15 @@ export class World {
   buildDynamic() {
     const L = this.g.L;
     this.rockMeshes = L.rocks.map(r => { const m = this.add(new THREE.DodecahedronGeometry(32, 0), this.lam(0xb3ab98), 0, 0, 10, { sx: 0.82, sy: 0.82 }); return m; });
-    this.fragMeshes = L.fragments.map(() => this.add(new THREE.OctahedronGeometry(10, 0), this.lam(0xdff6ff, { emissive: 0x7fd0ec, emissiveIntensity: 0.7 }), 0, 0, 12));
+    this.dangerMat = new THREE.MeshStandardMaterial({ color: 0xff6a4a, emissive: 0xff3a1a, emissiveIntensity: 0.9, roughness: 0.15, metalness: 0.2, flatShading: true });
+    this.fragMeshes = L.fragments.map(() => { const m = this.add(new THREE.OctahedronGeometry(11, 0), this.dangerMat, 0, 0, 12); m.scale.y = 1.4; this.glowSprite(0xff5a3a, 70, 0, 6, 0, 0.55, m); return m; });
     this.sentHeads = L.sentinels.map(s => {
       const head = this.add(new THREE.BoxGeometry(44, 22, 44), this.lam(0x4b5262), s.s.x + 30, s.s.y - 11, 0);
       const em = this.basic(0x2b2c33);
       const eye = this.add(new THREE.SphereGeometry(7, 8, 6), em, s.s.x + 30, s.s.y - 12, 24, { cast: false });
       return { s, head, eye, em };
     });
-    const pg = new THREE.SphereGeometry(9, 8, 6), pm = this.basic(0xffb08a, { transparent: true, opacity: 0.9 });
+    const pg = new THREE.SphereGeometry(9, 16, 12), pm = this.basic(0xff5a3a, { transparent: true, opacity: 0.95 });
     this.pulseMeshes = this.g.pulses.items.map(() => { const m = new THREE.Mesh(pg, pm); m.visible = false; this.scene.add(m); return m; });
     const bg = new THREE.SphereGeometry(5, 6, 4), bm = this.lam(0x3d4350);
     this.beetleMeshes = L.beetles.map(() => {
@@ -741,10 +743,12 @@ export class World {
     const g = this.g, t = (this.t += dt);
     this.applyEnv(dt);
     // cámara con leve inclinación de diorama
-    const sh = g.cam.shake * g.cam.shake * 14;
-    const cx = g.cam.x + Math.sin(t * 47) * sh, cy = g.cam.y + Math.cos(t * 39) * sh;
+    const a = g.alpha, tr = Math.min(1, g.cam.shake), sh = tr * tr * CONFIG.shakeAmp;
+    const cx = g.prev.cx + (g.cam.x - g.prev.cx) * a + (Math.random() * 2 - 1) * sh;
+    const cy = g.prev.cy + (g.cam.y - g.prev.cy) * a + (Math.random() * 2 - 1) * sh;
     this.camera.position.set(cx, -cy + 70, this.dist);
     this.camera.lookAt(cx, -cy + 8, 0);
+    this.camera.rotation.z += (Math.random() * 2 - 1) * 0.012 * tr * tr;
     this.sky.position.set(cx * 0.93, -cy * 0.45, 0);
     this.skyDome.position.copy(this.camera.position);
     this.sun.position.set(cx - 500, -cy + 900, 700); this.sun.target.position.set(cx, -cy, 0);
@@ -850,7 +854,8 @@ export class World {
 
   drawEntities(t) {
     const g = this.g, L = g.L;
-    L.fragments.forEach((f, i) => { const m = this.fragMeshes[i]; m.position.set(f.x, -(f.y - 12), 12); m.rotation.set(t * 2, t * 3, 0); });
+    this.dangerMat.emissiveIntensity = 0.7 + Math.sin(t * 8) * 0.35;
+    L.fragments.forEach((f, i) => { const m = this.fragMeshes[i]; m.position.set(f.x, -(f.y - 13), 12); m.rotation.set(0, t * 3, Math.sin(t * 5) * 0.2); });
     for (const h of this.sentHeads) {
       const st = h.s.state;
       h.em.color.setHex(st === 'dormido' ? 0x2b2c33 : st === 'despierta' ? (Math.sin(t * 30) > 0 ? 0xffb347 : 0x5a4020) : 0xff5a4a);
@@ -950,8 +955,9 @@ export class World {
     const blink = p.invuln > 0 && p.state !== 'pose' && Math.floor(g.time * 16) % 2 === 0;
     this.dip.visible = !p.hidden && !blink && g.mode !== 'titulo';
     dip.setUV(this.dipTex, p.anim, p.animTime);
-    const px = Math.round(p.pos.x + p.w / 2), py = Math.round(p.pos.y + p.h);
-    this.dip.position.set(px, -py, Z_SPRITE); this.dip.scale.x = p.face;
+    const a = g.alpha, ix = g.prev.px + (p.pos.x - g.prev.px) * a, iy = g.prev.py + (p.pos.y - g.prev.py) * a;
+    const px = Math.round(ix + p.w / 2), py = Math.round(iy + p.h), sq = p.sq || 1;
+    this.dip.position.set(px, -py, Z_SPRITE); this.dip.scale.set(p.face / Math.sqrt(sq), sq, 1);
     // sombra
     this.shadow.visible = this.dip.visible && p.shadowY !== null && p.shadowY !== undefined;
     if (this.shadow.visible) {

@@ -77,8 +77,9 @@ export class Sound {
     const r = Math.random();
     switch (name) {
       case 'paso': this.burst(0.05, { freq: 2200 + r * 900, q: 2.5, vol: 0.13 }); break;
-      case 'salto': this.tone(300, 0.14, { type: 'triangle', vol: 0.09, slide: 1.8 }); break;
-      case 'caida': this.burst(0.11, { type: 'lowpass', freq: 500, vol: 0.28 }); break;
+      case 'salto': this.tone(300 * (0.93 + r * 0.14), 0.14, { type: 'triangle', vol: 0.09, slide: 1.8 }); break;
+      case 'caida': this.burst(0.11, { type: 'lowpass', freq: 460 + r * 120, vol: 0.24 }); break;
+      case 'caida_fuerte': this.burst(0.22, { type: 'lowpass', freq: 320 + r * 80, vol: 0.4 }); this.tone(70 * (0.95 + r * 0.1), 0.25, { vol: 0.18, slide: 0.6 }); break;
       case 'empujar': this.burst(0.22, { type: 'lowpass', freq: 260 + r * 80, vol: 0.18 }); break;
       case 'interactuar': this.tone(880, 0.07, { type: 'square', vol: 0.05 }); this.tone(1320, 0.08, { type: 'square', vol: 0.04, at: 0.06 }); break;
       case 'cristal': [1318, 1975, 2637].forEach((f, i) => this.tone(f, 1.6, { vol: 0.07, at: i * 0.04, echo: true })); break;

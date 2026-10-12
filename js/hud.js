@@ -53,6 +53,12 @@ export class Hud {
       this.drawVision(W, H);
       this.drawDialog(W, H);
     }
+    // viñeta roja al recibir daño
+    if (g.hurtFlash > 0) {
+      const v = x.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, W * 0.75);
+      v.addColorStop(0, 'rgba(200,40,40,0)'); v.addColorStop(1, `rgba(200,40,40,${0.55 * g.hurtFlash})`);
+      x.fillStyle = v; x.fillRect(0, 0, W, H);
+    }
     // fundido
     if (g.fade.a > 0) { x.globalAlpha = g.fade.a; x.fillStyle = g.fade.color; x.fillRect(0, 0, W, H); x.globalAlpha = 1; }
     if (g.mode === 'fin') this.drawEnd(W, H);
@@ -239,8 +245,8 @@ export class Hud {
     x.fillStyle = 'rgba(22,23,28,.7)'; x.fillRect(0, 0, W, H);
     x.textAlign = 'center'; this.font(20); x.fillStyle = C.paper; x.fillText('PAUSA', W / 2, H / 2 - 30);
     this.font(10, false);
-    const lines = IS_TOUCH ? ['Pulgar izquierdo: moverse (a fondo, correr)', 'Saltar · ✦ acción y recuerdo']
-      : ['← → moverse · Shift correr', 'Espacio saltar · E acción y recuerdo', 'M sonido · Esc continuar'];
+    const lines = IS_TOUCH ? ['Pulgar izquierdo: moverse (a fondo, correr)', 'Saltar · ✦ acción y recuerdo', 'Toca II para continuar']
+      : ['← → moverse · Shift correr', 'Espacio saltar · E acción y recuerdo', 'M sonido · R reiniciar · Esc continuar'];
     lines.forEach((l, i) => x.fillText(l, W / 2, H / 2 + i * 15));
     this.font(10); x.fillStyle = C.ice; x.fillText(`Secretos encontrados: ${this.g.secrets.size}/4`, W / 2, H / 2 + lines.length * 15 + 16);
     x.textAlign = 'left';
