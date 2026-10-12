@@ -64,7 +64,7 @@ export class Game {
   openDialog(who, text) { this.dialog = { who, text, shown: 0, blipAcc: 0 }; }
   findSecret(id, text) {
     if (this.secrets.has(id)) return;
-    this.secrets.add(id); this.sound.sfx('secreto'); this.showToast(`Secreto ${this.secrets.size}/4 · ${text}`, 6);
+    this.secrets.add(id); this.sound.sfx('secreto'); this.showToast(`Secreto ${this.secrets.size}/4 · ${text}`, 3.5);
   }
   burst(x, y, n, rgb, { speed = 80, life = 0.8, g = 0, z = 0, spread = 1, up = 0, drag = 0, zs = 20 } = {}) {
     for (let i = 0; i < n; i++) {
@@ -227,7 +227,7 @@ export class Game {
     } else {
       this.sound.sfx('nada');
       this.burst(hx, hy, 10, [0.75, 0.92, 0.97], { speed: 50, life: 0.4 });
-      if (!this.hint || this.hint.t > this.hint.dur) this.showHint('El recuerdo no encuentra nada que completar aquí.', 2.5);
+      
     }
   }
 
@@ -242,7 +242,7 @@ export class Game {
         r.inSlot = true; r.s.pushable = false;
         this.sound.sfx('caida'); this.sound.sfx('empujar');
         this.burst(r.pos.x + 25, r.pos.y, 14, [0.92, 0.9, 0.85], { speed: 90, life: 0.7, g: 300, up: 60 });
-        this.showHint(this.L.rocks.every(k => k.inSlot) ? 'Las dos rocas en su sitio. Ahora, la palanca.' : 'Una roca en su hueco. Falta la otra.', 3);
+        if (this.L.rocks.every(k => k.inSlot)) this.setObjective('Baja la palanca');
       }
     }
   }

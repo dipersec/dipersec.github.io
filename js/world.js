@@ -1,6 +1,8 @@
 // world.js — Render 2.5D con three.js: diorama low-poly con luz, sombras y paralaje 3D real.
 // Solo DIP y Tilo son pixel art (planos con su sprite sheet). draw() solo LEE el estado del juego.
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { makeTextures, worldUV } from './textures.js';
 
 const FOV = 34;
 const Z_SPRITE = 44;
@@ -8,17 +10,17 @@ const HEX = (h) => new THREE.Color(h);
 
 // Clima y luz por zona (la transición entre zonas es suave)
 const ENV = {
-  titulo: { bg: 0xefe7d6, fog: 0xe9dfcb, near: 700, far: 5200, hs: 0xfff6e4, hg: 0x8d8578, hi: 1.15, sun: 0xfff1c9, si: 1.5, dust: 0, violet: 0, sky: 1, glow: 0 },
-  cielo: { bg: 0xefe7d6, fog: 0xe9dfcb, near: 900, far: 6000, hs: 0xfff6e4, hg: 0x8d8578, hi: 1.1, sun: 0xfff1c9, si: 1.4, dust: 0, violet: 0, sky: 1, glow: 0 },
-  crater: { bg: 0xefe7d6, fog: 0xe8dcc6, near: 600, far: 4300, hs: 0xfff6e4, hg: 0x8d8578, hi: 1.15, sun: 0xfff0c4, si: 1.55, dust: 0.05, violet: 0, sky: 1, glow: 0 },
-  llanura: { bg: 0xf0e8d6, fog: 0xe9dfc9, near: 700, far: 4600, hs: 0xfff7e6, hg: 0x8d8578, hi: 1.15, sun: 0xfff1c9, si: 1.6, dust: 0.1, violet: 0, sky: 1, glow: 0 },
-  velo: { bg: 0xe7e3da, fog: 0xe4e0d6, near: 120, far: 1500, hs: 0xf6f3ec, hg: 0x8a867f, hi: 1.2, sun: 0xfff6dc, si: 0.95, dust: 0.55, violet: 0, sky: 1, glow: 0.4 },
-  vision: { bg: 0xe9f5f9, fog: 0xdcedf3, near: 300, far: 2600, hs: 0xffffff, hg: 0x9fb8c4, hi: 1.6, sun: 0xffffff, si: 1.2, dust: 0, violet: 0, sky: 1, glow: 1 },
-  santuario: { bg: 0x07080c, fog: 0x07080c, near: 380, far: 1500, hs: 0x5a8fa9, hg: 0x0a0a10, hi: 0.95, sun: 0x8fd8ff, si: 0.55, dust: 0.15, violet: 0, sky: 0, glow: 1 },
-  estacion: { bg: 0x0b0c10, fog: 0x0b0c10, near: 380, far: 1500, hs: 0x95a2bd, hg: 0x15161c, hi: 0.95, sun: 0xcfe6ff, si: 0.6, dust: 0, violet: 0, sky: 0, glow: 0.6 },
-  alarma: { bg: 0x14080c, fog: 0x14080c, near: 380, far: 1500, hs: 0xd08a9a, hg: 0x200a10, hi: 0.9, sun: 0xff9a8a, si: 0.7, dust: 0, violet: 0, sky: 0, glow: 0.6 },
-  huida: { bg: 0x120a18, fog: 0x120a18, near: 380, far: 1500, hs: 0xb98ad6, hg: 0x200a14, hi: 0.95, sun: 0xff9a9a, si: 0.7, dust: 0.1, violet: 0, sky: 0, glow: 0.8 },
-  final: { bg: 0xdccbd6, fog: 0xd8c6d2, near: 700, far: 4600, hs: 0xf5e6ef, hg: 0x6d6070, hi: 1.05, sun: 0xffd9c9, si: 1.25, dust: 0.05, violet: 1, sky: 1, glow: 0.3 }
+  titulo: { bg: 0xefe7d6, fog: 0xe9dfcb, near: 700, far: 5200, hs: 0xfff6e4, hg: 0x8d8578, hi: 0.71, sun: 0xfff1c9, si: 2.03, dust: 0, violet: 0, sky: 1, glow: 0 },
+  cielo: { bg: 0xefe7d6, fog: 0xe9dfcb, near: 900, far: 6000, hs: 0xfff6e4, hg: 0x8d8578, hi: 0.68, sun: 0xfff1c9, si: 1.89, dust: 0, violet: 0, sky: 1, glow: 0 },
+  crater: { bg: 0xefe7d6, fog: 0xe8dcc6, near: 900, far: 7500, hs: 0xfff6e4, hg: 0x8d8578, hi: 0.71, sun: 0xfff0c4, si: 2.09, dust: 0.05, violet: 0, sky: 1, glow: 0 },
+  llanura: { bg: 0xf0e8d6, fog: 0xe9dfc9, near: 900, far: 7500, hs: 0xfff7e6, hg: 0x8d8578, hi: 0.71, sun: 0xfff1c9, si: 2.16, dust: 0.1, violet: 0, sky: 1, glow: 0 },
+  velo: { bg: 0xe7e3da, fog: 0xe4e0d6, near: 120, far: 1500, hs: 0xf6f3ec, hg: 0x8a867f, hi: 0.74, sun: 0xfff6dc, si: 1.28, dust: 0.55, violet: 0, sky: 1, glow: 0.4 },
+  vision: { bg: 0xe9f5f9, fog: 0xdcedf3, near: 300, far: 2600, hs: 0xffffff, hg: 0x9fb8c4, hi: 0.99, sun: 0xffffff, si: 1.62, dust: 0, violet: 0, sky: 1, glow: 1 },
+  santuario: { bg: 0x07080c, fog: 0x07080c, near: 380, far: 1500, hs: 0x5a8fa9, hg: 0x0a0a10, hi: 0.59, sun: 0x8fd8ff, si: 0.74, dust: 0.15, violet: 0, sky: 0, glow: 1 },
+  estacion: { bg: 0x0b0c10, fog: 0x0b0c10, near: 380, far: 1500, hs: 0x95a2bd, hg: 0x15161c, hi: 0.59, sun: 0xcfe6ff, si: 0.81, dust: 0, violet: 0, sky: 0, glow: 0.6 },
+  alarma: { bg: 0x14080c, fog: 0x14080c, near: 380, far: 1500, hs: 0xd08a9a, hg: 0x200a10, hi: 0.56, sun: 0xff9a8a, si: 0.94, dust: 0, violet: 0, sky: 0, glow: 0.6 },
+  huida: { bg: 0x120a18, fog: 0x120a18, near: 380, far: 1500, hs: 0xb98ad6, hg: 0x200a14, hi: 0.59, sun: 0xff9a9a, si: 0.94, dust: 0.1, violet: 0, sky: 0, glow: 0.8 },
+  final: { bg: 0xdccbd6, fog: 0xd8c6d2, near: 900, far: 7500, hs: 0xf5e6ef, hg: 0x6d6070, hi: 0.65, sun: 0xffd9c9, si: 1.69, dust: 0.05, violet: 1, sky: 1, glow: 0.3 }
 };
 
 const MAT = {
@@ -37,18 +39,21 @@ const MAT = {
 export class World {
   constructor(canvas, game, assets) {
     this.g = game; this.assets = assets;
-    const r = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
-    r.setPixelRatio(1);
-    r.shadowMap.enabled = true; r.shadowMap.type = THREE.BasicShadowMap;
+    const r = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    r.outputColorSpace = THREE.SRGBColorSpace;
+    r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
     r.localClippingEnabled = true;
+    this.mobile = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(FOV, 16 / 9, 10, 9500);
+    this.camera = new THREE.PerspectiveCamera(FOV, 16 / 9, 10, 12000);
     this.scene.fog = new THREE.Fog(0xe9dfcb, 600, 4200);
     this.scene.background = new THREE.Color(0xefe7d6);
     this.env = {}; this.envInit = false;
     this.t = 0;
     this.mats = {};
     this.tmpV = new THREE.Vector3(); this.tmpC = new THREE.Color();
+    this.tex = makeTextures(r);
+    this.buildEnvMaps();
     this.setupLights();
     this.buildSky();
     this.buildTerrain();
@@ -59,11 +64,15 @@ export class World {
   }
 
   // ---------- helpers ----------
-  lam(color, o = {}) { return new THREE.MeshLambertMaterial({ color, flatShading: true, ...o }); }
-  phong(color, o = {}) { return new THREE.MeshPhongMaterial({ color, flatShading: true, shininess: 90, specular: 0x8f9ab2, ...o }); }
+  lam(color, o = {}) { return new THREE.MeshStandardMaterial({ color, roughness: 0.82, metalness: 0, flatShading: true, envMapIntensity: 0.5, ...o }); }
+  phong(color, o = {}) { const { specular, shininess, ...rest } = o; return new THREE.MeshStandardMaterial({ color, roughness: 0.28, metalness: 0.25, flatShading: true, ...rest }); }
   basic(color, o = {}) { return new THREE.MeshBasicMaterial({ color, ...o }); }
-  glass() { return this.mats.glass || (this.mats.glass = this.phong(0x24262e, { specular: 0xc9d3e6, shininess: 70, emissive: 0x0b0c10 })); }
-  crystalMat() { return this.mats.crystal || (this.mats.crystal = this.lam(0x7fd0ec, { emissive: 0x2a86a8, emissiveIntensity: 0.8, transparent: true, opacity: 0.88 })); }
+  glass() { return this.mats.glass || (this.mats.glass = new THREE.MeshStandardMaterial({ color: 0x050608, roughness: 0.05, metalness: 0.05, envMapIntensity: 1.2, flatShading: true })); }
+  crystalMat() { return this.mats.crystal || (this.mats.crystal = new THREE.MeshStandardMaterial({ color: 0x9adff4, emissive: 0x2a9fc8, emissiveIntensity: 0.9, roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.9, flatShading: true })); }
+  glowSprite(color, size, x, gy, z, opacity = 0.7, parent) {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.tex.glow, color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false }));
+    s.scale.set(size, size, 1); s.position.set(x, -gy, z); (parent || this.scene).add(s); return s;
+  }
   add(geo, mat, x, gy, z, o = {}) {
     const m = new THREE.Mesh(geo, mat);
     m.position.set(x, -gy, z);
@@ -73,14 +82,35 @@ export class World {
     (o.parent || this.scene).add(m);
     return m;
   }
-  canvasTex(w, h, draw, nearest = true) {
+  canvasTex(w, h, draw, nearest = false) {
     const c = document.createElement('canvas'); c.width = w; c.height = h;
     draw(c.getContext('2d'), w, h);
     const t = new THREE.CanvasTexture(c);
     if (nearest) { t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; }
+    t.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
     t.colorSpace = THREE.SRGBColorSpace;
     t.userData.canvas = c;
     return t;
+  }
+
+  // Reflejos: un cielo marfil para el exterior y una sala oscura con luces azules para los interiores.
+  buildEnvMaps() {
+    const pm = new THREE.PMREMGenerator(this.renderer);
+    const mk = (top, bottom, lights) => {
+      const sc = new THREE.Scene();
+      const geo = new THREE.SphereGeometry(100, 32, 16), cols = [];
+      const a = HEX(top), b = HEX(bottom), c = new THREE.Color();
+      const p = geo.attributes.position;
+      for (let i = 0; i < p.count; i++) { c.copy(b).lerp(a, Math.min(1, Math.max(0, p.getY(i) / 100 * 0.5 + 0.5))); cols.push(c.r, c.g, c.b); }
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+      sc.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+      for (const [x, y, z, s, col] of lights) { const m = new THREE.Mesh(new THREE.SphereGeometry(s, 12, 8), new THREE.MeshBasicMaterial({ color: col })); m.position.set(x, y, z); sc.add(m); }
+      const rt = pm.fromScene(sc, 0.02); return rt.texture;
+    };
+    this.envExterior = mk(0xfaf4e6, 0x9a9184, [[-40, 60, -60, 14, 0xffffff]]);
+    this.envInterior = mk(0x1a2230, 0x05060a, [[-60, 20, -40, 10, 0x6fbfe6], [60, 30, -50, 8, 0x3d8fb0], [0, 70, 0, 12, 0x9fe0ff]]);
+    this.scene.environment = this.envExterior;
+    pm.dispose();
   }
 
   setupLights() {
@@ -88,129 +118,148 @@ export class World {
     this.scene.add(this.hemi);
     const s = this.sun = new THREE.DirectionalLight(0xfff1c9, 1.5);
     s.castShadow = true;
-    s.shadow.mapSize.set(1024, 1024);
+    s.shadow.mapSize.set(this.mobile ? 1024 : 2048, this.mobile ? 1024 : 2048);
     const c = s.shadow.camera; c.left = -720; c.right = 720; c.top = 520; c.bottom = -520; c.near = 10; c.far = 3000;
-    s.shadow.bias = -0.002;
+    s.shadow.bias = -0.0005; s.shadow.normalBias = 0.8; s.shadow.radius = 3;
     this.scene.add(s); this.scene.add(s.target);
   }
 
   // ---------- cielo marfil, sol pálido y tres anillos ----------
   buildSky() {
     const sky = this.sky = new THREE.Group(); this.scene.add(sky);
-    const geo = new THREE.PlaneGeometry(16000, 8000, 1, 8);
-    const cols = new Float32Array(geo.attributes.position.count * 3);
-    geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
-    this.skyGeo = geo; this.skyViolet = -1;
-    const plane = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, fog: false, depthWrite: false }));
-    plane.position.set(0, 1400, -5600); sky.add(plane);
-    const sunM = this.basic(0xfffaf0, { fog: false });
-    const sun = new THREE.Mesh(new THREE.CircleGeometry(260, 28), sunM); sun.position.set(-1500, 1500, -5400); sky.add(sun);
-    const halo = new THREE.Mesh(new THREE.CircleGeometry(720, 28), this.basic(0xfffbef, { fog: false, transparent: true, opacity: 0.35, depthWrite: false }));
-    halo.position.set(-1500, 1500, -5450); sky.add(halo);
-    // neblina mineral que tapa parte del sol
-    for (let i = 0; i < 3; i++) {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(2600 - i * 500, 120 + i * 60), this.basic(0xf1eadb, { fog: false, transparent: true, opacity: 0.55 - i * 0.12, depthWrite: false }));
-      m.position.set(-1400 + i * 260, 1380 + i * 130, -5300); sky.add(m);
+    this.skyUniforms = { top: { value: HEX(0xf6efe0) }, hor: { value: HEX(0xe7dac0) }, vio: { value: HEX(0x5b3f7a) }, violet: { value: 0 } };
+    this.skyDome = new THREE.Mesh(new THREE.SphereGeometry(9000, 32, 16), new THREE.ShaderMaterial({
+      uniforms: this.skyUniforms, side: THREE.BackSide, depthWrite: false, fog: false,
+      vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: 'uniform vec3 top; uniform vec3 hor; uniform vec3 vio; uniform float violet; varying vec3 vP; void main(){ float h = clamp(vP.y*1.6+0.05,0.0,1.0); vec3 c = mix(hor, top, smoothstep(0.0,1.0,h)); c = mix(c, vio, violet*0.8*(1.0-smoothstep(0.0,0.55,h))); gl_FragColor = vec4(c,1.0); }'
+    }));
+    this.skyDome.renderOrder = -10;
+    this.scene.add(this.skyDome);
+    // sol pálido con halo y neblina mineral
+    const sun = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.tex.glow, color: 0xffffff, transparent: true, depthWrite: false, fog: false }));
+    sun.scale.set(900, 900, 1); sun.position.set(-1500, 1500, -5400); sky.add(sun);
+    const core = new THREE.Mesh(new THREE.CircleGeometry(230, 64), this.basic(0xfffcf4, { fog: false })); core.position.set(-1500, 1500, -5450); sky.add(core);
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.tex.glow, color: 0xfff6e0, transparent: true, opacity: 0.55, depthWrite: false, fog: false }));
+    halo.scale.set(2600, 2600, 1); halo.position.set(-1500, 1500, -5500); sky.add(halo);
+    for (let i = 0; i < 4; i++) {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(3400 - i * 500, 260 + i * 80), new THREE.MeshBasicMaterial({ map: this.tex.neblina, color: 0xf3ecdf, transparent: true, opacity: 0.75 - i * 0.12, depthWrite: false, fog: false }));
+      m.position.set(-1300 + i * 300, 1360 + i * 150, -5300 + i * 20); sky.add(m);
     }
-    this.sunDisc = sun;
+    this.sunDisc = core;
     // tres anillos planetarios: bandas de partículas con huecos
-    this.ringMats = [];
-    const ringGroup = new THREE.Group(); ringGroup.position.set(900, 520, -5000); ringGroup.rotation.set(-1.28, 0.12, 0.2); sky.add(ringGroup);
-    const bands = [[1500, 1640, 0xd9d2c3, 0.6], [1760, 1880, 0xcfd6d8, 0.5], [1990, 2040, 0x9fd3e6, 0.55]];
-    for (const [r0, r1, col, op] of bands) {
-      const m = this.basic(col, { fog: false, transparent: true, opacity: op, side: THREE.DoubleSide, depthWrite: false });
-      this.ringMats.push({ m, base: HEX(col) });
-      ringGroup.add(new THREE.Mesh(new THREE.RingGeometry(r0, r1, 96, 1), m));
-    }
-    this.ringGroup = ringGroup;
+    this.ringsMat = new THREE.MeshBasicMaterial({ map: this.tex.anillos, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide, color: 0xffffff });
+    const rings = new THREE.Mesh(new THREE.PlaneGeometry(4600, 4600), this.ringsMat);
+    rings.position.set(900, 520, -5000); rings.rotation.set(-1.28, 0.12, 0.2); sky.add(rings);
+    this.ringMats = [{ m: this.ringsMat, base: HEX(0xffffff) }];
     // cordillera lejana y la estructura circular parcialmente enterrada (visible desde el inicio)
-    const far = this.lam(0x1d1e24);
+    const far = new THREE.MeshStandardMaterial({ color: 0x1d1e24, roughness: 0.35, metalness: 0.2, flatShading: true });
     for (let i = 0; i < 16; i++) {
       const h = 700 + ((i * 7919) % 900), x = -3200 + i * 430 + ((i * 37) % 120);
-      const m = new THREE.Mesh(new THREE.ConeGeometry(320 + (i % 3) * 90, h, 4 + (i % 3)), far);
-      m.position.set(x, h / 2 - 200, -3600 - (i % 4) * 120); m.rotation.y = i * 0.7; sky.add(m);
+      const m = new THREE.Mesh(this.mountainGeo(320 + (i % 3) * 90, h, i), far);
+      m.position.set(x, -200, -3600 - (i % 4) * 120); m.rotation.y = i * 0.7; sky.add(m);
     }
     const sx = 700, sy = 420, sz = -3150;
-    const peak = new THREE.Mesh(new THREE.ConeGeometry(520, 1100, 5), far); peak.position.set(sx, 160, sz - 120); sky.add(peak);
-    this.structMat = this.lam(0x2a2c34, { emissive: 0x000000 });
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(170, 34, 6, 22), this.structMat);
+    const peak = new THREE.Mesh(this.mountainGeo(520, 1100, 99), far); peak.position.set(sx, -390, sz - 120); sky.add(peak);
+    this.structMat = new THREE.MeshStandardMaterial({ color: 0x2a2c34, roughness: 0.25, metalness: 0.6, emissive: 0x000000 });
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(170, 34, 16, 64), this.structMat);
     ring.position.set(sx, sy, sz); ring.rotation.set(0.15, 0.4, 0.3); sky.add(ring);
     this.structPos = new THREE.Vector3(sx, sy, sz);
     // señal final: haz y ruta luminosa
-    this.beam = new THREE.Mesh(new THREE.CylinderGeometry(12, 26, 4200, 10, 1, true), this.basic(0xdff6ff, { fog: false, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+    this.beam = new THREE.Mesh(new THREE.CylinderGeometry(12, 26, 4200, 24, 1, true), this.basic(0xdff6ff, { fog: false, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
     this.beam.position.set(sx, sy + 2100, sz); sky.add(this.beam);
     const curve = new THREE.CatmullRomCurve3([
       new THREE.Vector3(sx, sy + 60, sz), new THREE.Vector3(sx + 500, sy + 240, sz - 100),
       new THREE.Vector3(sx + 1200, sy + 320, sz - 250), new THREE.Vector3(sx + 1900, sy + 280, sz - 400)
     ]);
-    this.routeGeo = new THREE.TubeGeometry(curve, 80, 10, 4, false);
+    this.routeGeo = new THREE.TubeGeometry(curve, 80, 8, 4, false);
     this.route = new THREE.Mesh(this.routeGeo, this.basic(0xbfeaf7, { fog: false, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
     this.route.geometry.setDrawRange(0, 0); sky.add(this.route);
-    this.routeDot = new THREE.Mesh(new THREE.SphereGeometry(40, 8, 6), this.basic(0xffffff, { fog: false, transparent: true, opacity: 0 }));
+    this.routeDot = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.tex.glow, color: 0xdff6ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    this.routeDot.scale.set(240, 240, 1); this.routeDot.material.opacity = 0;
     this.routeDot.position.copy(curve.getPoint(1)); sky.add(this.routeDot);
     // cápsula del intro (cae detrás de una montaña negra)
     this.meteor = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(22, 28, 70, 8), this.lam(0xb9c0cc));
+    const hull = new THREE.MeshStandardMaterial({ color: 0xc9cfd8, roughness: 0.35, metalness: 0.6 });
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(24, 50, 8, 20), hull);
     body.rotation.z = Math.PI / 2; this.meteor.add(body);
-    const nose = new THREE.Mesh(new THREE.ConeGeometry(28, 30, 8), this.lam(0x8d95a3)); nose.rotation.z = Math.PI / 2; nose.position.x = -50; this.meteor.add(nose);
     this.meteorWin = this.basic(0x7fd0ec, { fog: false });
-    const win = new THREE.Mesh(new THREE.CircleGeometry(9, 10), this.meteorWin); win.position.set(-5, 6, 26); this.meteor.add(win);
-    const fire = new THREE.Mesh(new THREE.ConeGeometry(40, 260, 8, 1, true), this.basic(0xfff1c9, { fog: false, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }));
-    fire.rotation.z = Math.PI / 2; fire.position.x = 150; this.meteor.add(fire);
+    const win = new THREE.Mesh(new THREE.CircleGeometry(9, 24), this.meteorWin); win.position.set(-5, 6, 25); this.meteor.add(win);
+    const fire = new THREE.Mesh(new THREE.ConeGeometry(40, 300, 24, 1, true), this.basic(0xfff1c9, { fog: false, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false }));
+    fire.rotation.z = Math.PI / 2; fire.position.x = 170; this.meteor.add(fire);
+    this.glowSprite(0xfff1c9, 260, 40, 0, 0, 0.9, this.meteor);
     this.meteorBits = [];
-    for (let i = 0; i < 5; i++) { const b = new THREE.Mesh(new THREE.BoxGeometry(10, 6, 6), this.lam(0x8d95a3)); this.meteor.add(b); this.meteorBits.push(b); }
+    for (let i = 0; i < 5; i++) { const b = new THREE.Mesh(new THREE.BoxGeometry(10, 6, 6), hull); this.meteor.add(b); this.meteorBits.push(b); }
     this.meteor.visible = false; this.scene.add(this.meteor);
+  }
+
+  // Montaña de vidrio negro: facetas lisas y cortes demasiado regulares
+  mountainGeo(r, h, seed) {
+    const sides = 5 + (seed % 3);
+    const g = new THREE.CylinderGeometry(r * (0.08 + (seed % 4) * 0.03), r, h, sides, 1);
+    g.translate(0, h / 2, 0);
+    if (seed % 2) g.rotateZ(0.04 * ((seed % 5) - 2));
+    return g.toNonIndexed();
   }
 
   // ---------- sólidos del nivel + suelo lejano + montañas negras ----------
   buildTerrain() {
-    const L = this.g.L;
+    const L = this.g.L, T = this.tex;
     this.solidMeshes = new Map();
+    const std = (o) => new THREE.MeshStandardMaterial({ envMapIntensity: 0.45, ...o });
+    const base = {
+      costra: () => std({ color: 0xffffff, map: T.costra, bumpMap: T.costraBump, bumpScale: 2.5, roughness: 0.93 }),
+      roca: () => std({ color: 0xffffff, map: T.roca, bumpMap: T.roca, bumpScale: 3, roughness: 0.9 }),
+      piedra: () => std({ color: 0xffffff, map: T.piedra, bumpMap: T.piedra, bumpScale: 1.5, roughness: 0.7 }),
+      placa: () => std({ color: 0xf2ece0, map: T.costra, bumpMap: T.costraBump, bumpScale: 4, roughness: 0.95 }),
+      placa_eco: () => std({ color: 0x5a6a90, map: T.santuario, emissiveMap: T.santuarioLuz, emissive: 0x7fd0ec, emissiveIntensity: 1, roughness: 0.3, metalness: 0.2 }),
+      placa_metal: () => std({ color: 0xb08a9a, map: T.metal, roughness: 0.4, metalness: 0.6 }),
+      metal: () => std({ color: 0xc9d0dc, map: T.metal, roughness: 0.38, metalness: 0.65 }),
+      santuario: () => std({ color: 0xffffff, map: T.santuario, emissiveMap: T.santuarioLuz, emissive: 0x3d8fb0, emissiveIntensity: 0.9, roughness: 0.32, metalness: 0.25 }),
+      estacion: () => std({ color: 0xffffff, map: T.metal, emissiveMap: T.metalLuz, emissive: 0x6fbfe6, emissiveIntensity: 0.8, roughness: 0.42, metalness: 0.55 }),
+      puerta: () => std({ color: 0xc9d4ea, map: T.metal, emissiveMap: T.metalLuz, emissive: 0x9fe0ff, emissiveIntensity: 1.2, roughness: 0.3, metalness: 0.7 })
+    };
     const matCache = {};
     const mats = (name) => {
-      if (matCache[name]) return matCache[name];
-      if (name === 'vidrio') return (matCache[name] = this.glass());
-      const c = MAT[name] || MAT.costra;
-      const side = this.lam(c.side), top = this.lam(c.top), front = this.lam(c.front);
-      return (matCache[name] = [side, side, top, side, front, side]);
-    };
-    const ghostMats = (name) => {
-      const c = MAT[name] || MAT.costra;
-      return [c.side, c.side, c.top, c.side, c.front, c.side].map(col => this.lam(col, { transparent: true, opacity: 0, emissive: 0x7fd0ec, emissiveIntensity: 0 }));
+      if (name === 'vidrio') return this.glass();
+      return matCache[name] || (matCache[name] = (base[name] || base.costra)());
     };
     const anchorSolids = new Set(L.anchors.flatMap(a => a.solids));
     const phaseSolids = new Set(L.phases.map(p => p.s));
     for (const s of L.solids) {
       if (s.invisible || s.pushable) continue;
-      const d = s.zf - s.zb;
-      const geo = new THREE.BoxGeometry(s.w, s.h, d);
+      const d = s.zf - s.zb, cx = s.x + s.w / 2, cy = -(s.y + s.h / 2), cz = (s.zf + s.zb) / 2;
+      const rad = Math.min(5, s.h / 3, s.w / 3, d / 3);
+      const geo = rad > 1.5 ? new RoundedBoxGeometry(s.w, s.h, d, 2, rad) : new THREE.BoxGeometry(s.w, s.h, d);
+      worldUV(geo, cx, cy, cz);
       let mat;
       if (phaseSolids.has(s)) {
         const col = s.mat === 'eco' ? 0x7fd0ec : 0x9fe0ff;
         mat = this.basic(col, { transparent: true, opacity: 0.75 });
-      } else if (anchorSolids.has(s)) mat = ghostMats(s.mat);
+      } else if (anchorSolids.has(s)) { mat = mats(s.mat).clone(); mat.transparent = true; mat.opacity = 0; mat.emissive = HEX(0x7fd0ec); mat.emissiveIntensity = 0; mat.emissiveMap = null; }
       else mat = mats(s.mat);
-      const m = this.add(geo, mat, s.x + s.w / 2, s.y + s.h / 2, (s.zf + s.zb) / 2, { cast: s.h < 400 });
-      const edgeCol = phaseSolids.has(s) ? 0xdff6ff : (anchorSolids.has(s) ? 0xbfeaf7 : MAT[s.mat]?.edge);
+      const m = this.add(geo, mat, cx, s.y + s.h / 2, cz, { cast: s.h < 400 });
+      const edgeCol = phaseSolids.has(s) ? 0xdff6ff : (anchorSolids.has(s) ? 0xbfeaf7 : null);
       if (edgeCol) {
-        const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: edgeCol, transparent: true, opacity: anchorSolids.has(s) ? 0 : 0.45 }));
+        const e = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(s.w, s.h, d)), new THREE.LineBasicMaterial({ color: edgeCol, transparent: true, opacity: anchorSolids.has(s) ? 0 : 0.6 }));
         m.add(e); m.userData.edges = e;
       }
       this.solidMeshes.set(s, m);
     }
     // suelo lejano de la llanura y montañas negras con cortes demasiado lisos
-    const crust = this.lam(0xe6dfd0);
-    this.add(new THREE.PlaneGeometry(9000, 3200), crust, 2300, -140, -2330, { rx: -Math.PI / 2, cast: false });
-    const dark = this.phong(0x1b1c21, { specular: 0x5a6070, shininess: 60 });
+    const farGeo = new THREE.PlaneGeometry(9000, 3200); farGeo.rotateX(-Math.PI / 2); worldUV(farGeo, 2300, 140, -2330, 1 / 400);
+    const far = this.add(farGeo, mats('costra'), 2300, -140, -2330, { cast: false });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x0c0d11, roughness: 0.18, metalness: 0.05, flatShading: true, envMapIntensity: 0.9 });
     const mts = [[-500, -2100, 620], [500, -2500, 760], [1200, -1700, 640], [2100, -2300, 700], [2900, -1900, 560], [3600, -2500, 820], [4300, -2000, 600], [5100, -2400, 760], [-1300, -2600, 800]];
-    mts.forEach(([x, z, h], i) => this.add(new THREE.ConeGeometry(h * 0.5, h, 4 + (i % 3)), dark, x, -140 - h / 2 + 10, z, { ry: i * 1.3, cast: false }));
+    mts.forEach(([x, z, h], i) => this.add(this.mountainGeo(h * 0.5, h, i + 1), dark, x, -140 + 10, z, { ry: i * 1.3, cast: false }));
     // pared trasera del cráter (une el fondo del cráter con la llanura)
-    this.add(new THREE.BoxGeometry(1500, 150, 80), this.lam(0xd3cbb9), 255, -65, -770, { cast: false });
+    const wall = new RoundedBoxGeometry(1500, 150, 80, 2, 6); worldUV(wall, 255, 65, -770);
+    this.add(wall, mats('costra'), 255, -65, -770, { cast: false });
     // dunas y piedras en el fondo cercano
-    const dune = this.lam(0xe2dbcb);
+    const dune = mats('costra');
     for (let i = 0; i < 26; i++) {
       const x = -200 + i * 200 + ((i * 53) % 90), z = -820 - (i % 5) * 140;
-      this.add(new THREE.DodecahedronGeometry(80 + (i % 4) * 40, 0), dune, x, -140, z, { sy: 0.25, ry: i, cast: false });
+      const g = new THREE.SphereGeometry(80 + (i % 4) * 40, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2); worldUV(g, x, 0, z);
+      this.add(g, dune, x, -140, z, { sy: 0.25, ry: i, cast: false });
     }
   }
 
@@ -243,9 +292,10 @@ export class World {
         }
         case 'capsula': {
           const g = new THREE.Group(); g.position.set(x, -y + 34, -6); g.rotation.z = -0.35; g.rotation.y = 0.25; g.scale.setScalar(1.6); this.scene.add(g);
-          const hull = this.lam(0xb9c0cc), trim = this.lam(0x8d95a3);
-          const b = new THREE.Mesh(new THREE.CylinderGeometry(24, 30, 76, 8), hull); b.rotation.z = Math.PI / 2; b.castShadow = true; g.add(b);
-          const n = new THREE.Mesh(new THREE.ConeGeometry(30, 34, 8), trim); n.rotation.z = Math.PI / 2; n.position.x = -55; g.add(n);
+          const hull = new THREE.MeshStandardMaterial({ color: 0xd3d8e0, roughness: 0.32, metalness: 0.7 }), trim = new THREE.MeshStandardMaterial({ color: 0x7d8594, roughness: 0.45, metalness: 0.6 });
+          const b = new THREE.Mesh(new THREE.CapsuleGeometry(26, 56, 10, 28), hull); b.rotation.z = Math.PI / 2; b.castShadow = true; g.add(b);
+          const band = new THREE.Mesh(new THREE.TorusGeometry(26.5, 2.5, 10, 40), trim); band.rotation.y = Math.PI / 2; band.position.x = -18; g.add(band);
+          const n = new THREE.Mesh(new THREE.TorusGeometry(26.5, 2.5, 10, 40), trim); n.rotation.y = Math.PI / 2; n.position.x = 22; g.add(n);
           for (const s of [-1, 1]) { const f = new THREE.Mesh(new THREE.BoxGeometry(26, 4, 34), trim); f.position.set(30, s * 24, 0); f.rotation.x = s * 0.5; g.add(f); }
           const hinge = new THREE.Group(); hinge.position.set(14, 24, 0); g.add(hinge);
           const hatch = new THREE.Mesh(new THREE.BoxGeometry(34, 4, 30), trim); hatch.position.set(-17, 2, 0); hinge.add(hatch);
@@ -604,7 +654,7 @@ export class World {
     const pg = new THREE.BufferGeometry();
     pg.setAttribute('position', new THREE.BufferAttribute(this.pPos, 3));
     pg.setAttribute('color', new THREE.BufferAttribute(this.pCol, 3));
-    this.points = new THREE.Points(pg, new THREE.PointsMaterial({ size: 3.2, vertexColors: true, fog: false }));
+    this.points = new THREE.Points(pg, new THREE.PointsMaterial({ size: 6, map: this.tex.dot, vertexColors: true, transparent: true, depthWrite: false, fog: false }));
     this.points.frustumCulled = false; this.scene.add(this.points);
     // polvo del velo mineral / tormenta
     const dn = 260;
@@ -612,7 +662,7 @@ export class World {
     for (let i = 0; i < dn * 4; i++) this.dustSeed[i] = Math.random();
     this.dPos = new Float32Array(dn * 3);
     const dg = new THREE.BufferGeometry(); dg.setAttribute('position', new THREE.BufferAttribute(this.dPos, 3));
-    this.dustMat = new THREE.PointsMaterial({ size: 2.4, color: 0xfffaf0, transparent: true, opacity: 0, fog: false, depthWrite: false });
+    this.dustMat = new THREE.PointsMaterial({ size: 4, map: this.tex.dot, color: 0xfffaf0, transparent: true, opacity: 0, fog: false, depthWrite: false });
     this.dust = new THREE.Points(dg, this.dustMat); this.dust.frustumCulled = false; this.scene.add(this.dust);
     // fantasmas de la versión completa de las ruinas
     this.ghostGroup = new THREE.Group(); this.scene.add(this.ghostGroup);
@@ -657,7 +707,12 @@ export class World {
     const viewH = Math.max(360, Math.round(560 / aspect));
     const viewW = Math.round(viewH * aspect);
     this.g.view.w = viewW; this.g.view.h = viewH;
-    this.renderer.setSize(viewW, viewH, false);
+    this.css = [cssW, cssH];
+    this.prMax = Math.min(window.devicePixelRatio || 1, this.mobile ? 1.5 : 2);
+    if (!this.pr) this.pr = this.prMax;
+    this.pr = Math.min(this.pr, this.prMax);
+    this.renderer.setPixelRatio(this.pr);
+    this.renderer.setSize(cssW, cssH, false);
     this.camera.aspect = aspect; this.camera.updateProjectionMatrix();
     this.dist = (viewH / 2) / Math.tan(THREE.MathUtils.degToRad(FOV / 2));
   }
@@ -669,7 +724,20 @@ export class World {
   }
 
   // =====================================================================
-  draw(dt) {
+  // Resolución adaptativa: si el equipo no llega a ~40 fps, baja la nitidez del mundo (nunca la de DIP ni el HUD).
+  adapt(dt) {
+    this.ema = this.ema === undefined ? dt : this.ema * 0.95 + dt * 0.05;
+    this.adaptT = (this.adaptT || 0) + dt;
+    if (this.adaptT < 2 || !this.css) return;
+    this.adaptT = 0;
+    let pr = this.pr;
+    if (this.ema > 1 / 40 && pr > 0.6) pr = Math.max(0.6, pr * 0.8);
+    else if (this.ema < 1 / 57 && pr < this.prMax) pr = Math.min(this.prMax, pr * 1.1);
+    if (Math.abs(pr - this.pr) > 0.01) { this.pr = pr; this.renderer.setPixelRatio(pr); this.renderer.setSize(this.css[0], this.css[1], false); }
+  }
+
+  draw(dt, frameDt = dt) {
+    this.adapt(frameDt);
     const g = this.g, t = (this.t += dt);
     this.applyEnv(dt);
     // cámara con leve inclinación de diorama
@@ -678,6 +746,7 @@ export class World {
     this.camera.position.set(cx, -cy + 70, this.dist);
     this.camera.lookAt(cx, -cy + 8, 0);
     this.sky.position.set(cx * 0.93, -cy * 0.45, 0);
+    this.skyDome.position.copy(this.camera.position);
     this.sun.position.set(cx - 500, -cy + 900, 700); this.sun.target.position.set(cx, -cy, 0);
 
     this.drawIntro(t);
@@ -704,20 +773,10 @@ export class World {
     this.sun.color.copy(e.sun); this.sun.intensity = e.si;
     if (alarm) this.hemi.color.lerp(this.tmpC.set(g.envName === 'huida' ? 0xd04070 : 0xff4040), alarm * 0.5);
     this.sky.visible = e.sky > 0.05;
-    // degradado del cielo (y oscurecimiento violeta del horizonte al final)
-    const v = Math.round(e.violet * 50) / 50;
-    if (v !== this.skyViolet) {
-      this.skyViolet = v;
-      const top = HEX(0xf4eddd), hor = HEX(0xe8dcc0), vio = HEX(0x5b3f7a), c = new THREE.Color();
-      const pos = this.skyGeo.attributes.position, col = this.skyGeo.attributes.color;
-      for (let i = 0; i < pos.count; i++) {
-        const yy = (pos.getY(i) + 4000) / 8000; // 0 abajo, 1 arriba
-        c.copy(hor).lerp(top, Math.min(1, yy * 1.4));
-        if (v > 0) c.lerp(vio, v * Math.max(0, 1 - yy * 1.6) * 0.8);
-        col.setXYZ(i, c.r, c.g, c.b);
-      }
-      col.needsUpdate = true;
-    }
+    this.skyDome.visible = e.sky > 0.05;
+    const U = this.skyUniforms;
+    U.top.value.copy(e.bg).lerp(this.tmpC.set(0xffffff), 0.25); U.hor.value.copy(e.fog); U.violet.value = e.violet;
+    this.scene.environment = e.sky > 0.5 ? this.envExterior : this.envInterior;
   }
 
   drawIntro(t) {
@@ -748,7 +807,7 @@ export class World {
         if (a.state === 'latente') { edge = latentVis; }
         else if (a.state === 'formando') { const k = a.t / 1.3; edge = Math.min(1, k * 2.5); op = Math.max(0, (k - 0.45) / 0.55); glow = 1 - op * 0.5; }
         else { op = 1; edge = 0; glow = 0; }
-        for (const mm of mats) { mm.opacity = op; mm.transparent = op < 1; mm.depthWrite = op > 0.5; mm.emissiveIntensity = glow; }
+        for (const mm of (Array.isArray(mats) ? mats : [mats])) { mm.opacity = op; mm.transparent = op < 1; mm.depthWrite = op > 0.5; mm.emissiveIntensity = glow; }
         if (e) e.material.opacity = edge;
         m.visible = op > 0 || edge > 0;
       }

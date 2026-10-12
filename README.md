@@ -7,7 +7,7 @@ Abre `index.html` desde un servidor (GitHub Pages o `python3 -m http.server`). t
 
 | Acción | Teclado | Táctil |
 |---|---|---|
-| Caminar / correr | ← → o A D · Shift | ◀ ▶ · Correr |
+| Caminar / correr | ← → o A D · Shift | joystick: pulgar en la mitad izquierda (a fondo corre) |
 | Saltar (mantén para llegar más alto) | Espacio o ↑ | Saltar |
 | Examinar, hablar, proyectar el recuerdo | E | ✦ |
 | Avanzar diálogo | Espacio, E o Enter | tocar la pantalla |
@@ -35,8 +35,9 @@ js/story.js     las 9 escenas como guiones (generadores) + interacciones y secre
 js/world.js     render three.js: diorama low-poly, luz y sombras, paralaje real, clima por zona
 js/hud.js       HUD, diálogos, visiones y pantallas (canvas 2D)
 js/sprites.js   SpriteSheet + generación del pixel art (DIP 48×86, Tilo 40×60)
+js/textures.js  texturas procedurales HD (costra, roca, piedra, metal, glifos, anillos)
 js/pool.js      object pool (partículas, pulsos de los centinelas)
 js/audio.js     Web Audio sintetizado: viento, pasos, cristales, voces y música por zona
 ```
 - El sprite de DIP es el SNES de 48 px sin cambios de diseño, generado con el mismo SVG y la misma paleta. Se agregaron dos filas con el mismo dibujo: empujar y daño.
-- Solo DIP y Tilo son pixel art. El mundo es 3D y se renderiza a baja resolución (360 px de alto) con `image-rendering: pixelated`.
+- Solo DIP y Tilo son pixel art. El mundo se renderiza en HD: antialiasing, materiales PBR con reflejos del cielo, texturas procedurales, sombras suaves y resolución adaptativa (baja sola si el equipo no llega a ~40 fps).

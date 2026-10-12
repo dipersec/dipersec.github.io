@@ -65,7 +65,6 @@ export class Hud {
     x.globalAlpha = a;
     x.fillStyle = 'rgba(244,239,228,.72)'; x.fillRect(W / 2 - 190, 80, 380, 180);
     x.strokeStyle = 'rgba(61,67,80,.5)'; x.strokeRect(W / 2 - 189.5, 80.5, 379, 179);
-    x.fillStyle = 'rgba(244,239,228,.72)'; x.fillRect(0, 316, W, 36);
     x.textAlign = 'center';
     this.font(64); x.fillStyle = C.ink; x.fillText('DIP', W / 2, 132);
     x.fillStyle = C.ice; x.fillRect(W / 2 - 70, 142, 140, 2);
@@ -73,8 +72,7 @@ export class Hud {
     this.font(11, false); x.fillText('Nivel 1 · Nácar — El planeta de la caída', W / 2, 190);
     if (Math.sin(t * 3) > -0.3) { this.font(12); x.fillStyle = '#2a6f8f'; x.fillText(IS_TOUCH ? 'Toca para empezar' : 'Pulsa una tecla para empezar', W / 2, 238); }
     this.font(9, false); x.fillStyle = 'rgba(61,67,80,.8)';
-    x.fillText(IS_TOUCH ? '◀ ▶ caminar · Correr · Saltar · ✦ acción y recuerdo' : '← → caminar · Shift correr · Espacio saltar · E acción y recuerdo · Esc pausa · M sonido', W / 2, 330);
-    x.fillText('Se recomienda jugar con sonido.', W / 2, 344);
+    x.fillText('Con sonido', W / 2, 336);
     x.globalAlpha = 1; x.textAlign = 'left';
   }
 
@@ -115,8 +113,8 @@ export class Hud {
       const env = g.envName, dark = ['santuario', 'estacion', 'huida', 'alarma'].includes(env);
       lines.forEach((l, i) => {
         x.fillStyle = dark ? 'rgba(22,23,28,.6)' : 'rgba(244,239,228,.65)';
-        const oy = IS_TOUCH ? 30 : 0, w = x.measureText(l).width; x.fillRect(W - 12 - w - 4, 8 + oy + i * 12, w + 8, 12);
-        x.fillStyle = dark ? '#cfe6ff' : C.ink; x.fillText(l, W - 12, 17 + oy + i * 12);
+        const rx = IS_TOUCH ? W - 52 : W - 12, w = x.measureText(l).width; x.fillRect(rx - w - 4, 8 + i * 12, w + 8, 12);
+        x.fillStyle = dark ? '#cfe6ff' : C.ink; x.fillText(l, rx, 17 + i * 12);
       });
       x.textAlign = 'left';
     }
@@ -138,12 +136,13 @@ export class Hud {
     const x = this.ctx, a = Math.min(1, z.t / 0.6, (4.5 - z.t) / 0.8);
     x.globalAlpha = Math.max(0, a); x.textAlign = 'center';
     const dark = ['santuario', 'estacion', 'huida', 'alarma'].includes(this.g.envName);
+    x.shadowColor = dark ? 'rgba(0,0,0,.8)' : 'rgba(255,252,244,.95)'; x.shadowBlur = 8;
     this.font(10, false); x.fillStyle = dark ? C.iceL : '#2a6f8f';
     x.fillText(z.n <= 5 ? `ZONA ${z.n}` : 'ESCENA 9', W / 2, 70);
     this.font(18); if (x.measureText(z.name).width > W - 20) this.font(12);
     x.fillStyle = dark ? '#eef6fa' : C.ink; x.fillText(z.name, W / 2, 92);
     x.fillStyle = C.ice; x.fillRect(W / 2 - 40, 100, 80, 1);
-    x.globalAlpha = 1; x.textAlign = 'left';
+    x.shadowBlur = 0; x.globalAlpha = 1; x.textAlign = 'left';
   }
 
   drawHint(W, H) {
@@ -240,8 +239,8 @@ export class Hud {
     x.fillStyle = 'rgba(22,23,28,.7)'; x.fillRect(0, 0, W, H);
     x.textAlign = 'center'; this.font(20); x.fillStyle = C.paper; x.fillText('PAUSA', W / 2, H / 2 - 30);
     this.font(10, false);
-    const lines = IS_TOUCH ? ['◀ ▶ caminar · Correr (mantener)', 'Saltar (mantén para llegar más alto)', '✦ examinar, hablar y proyectar el recuerdo']
-      : ['← → / A D caminar · Shift correr', 'Espacio / ↑ saltar (mantén para llegar más alto)', 'E examinar, hablar y proyectar el recuerdo', 'M silenciar · Esc continuar'];
+    const lines = IS_TOUCH ? ['Pulgar izquierdo: moverse (a fondo, correr)', 'Saltar · ✦ acción y recuerdo']
+      : ['← → moverse · Shift correr', 'Espacio saltar · E acción y recuerdo', 'M sonido · Esc continuar'];
     lines.forEach((l, i) => x.fillText(l, W / 2, H / 2 + i * 15));
     this.font(10); x.fillStyle = C.ice; x.fillText(`Secretos encontrados: ${this.g.secrets.size}/4`, W / 2, H / 2 + lines.length * 15 + 16);
     x.textAlign = 'left';

@@ -33,6 +33,34 @@ export class Input {
       b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('lostpointercapture', up);
     });
   }
+  // Joystick: el pulgar se apoya en cualquier punto de la mitad izquierda y se desliza.
+  // Poco desplazamiento = caminar; empujar a fondo = correr.
+  bindStick(zone, base, knob) {
+    let id = null, ox = 0, oy = 0;
+    const R = 56;
+    const rest = () => { base.classList.remove('activo'); knob.style.transform = 'translate(-50%,-50%)'; base.style.left = ''; base.style.top = ''; };
+    const set = (dx) => {
+      const ax = Math.abs(dx);
+      this.touch.left = dx < -12; this.touch.right = dx > 12; this.touch.run = ax > R * 0.8;
+    };
+    zone.addEventListener('pointerdown', (e) => {
+      if (id !== null) return;
+      e.preventDefault(); id = e.pointerId; zone.setPointerCapture?.(id);
+      const r = zone.getBoundingClientRect(); ox = e.clientX - r.left; oy = e.clientY - r.top;
+      base.style.left = ox + 'px'; base.style.top = oy + 'px'; base.classList.add('activo');
+      this.pressed.any = true; this.pressed.confirm = true;
+    });
+    zone.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== id) return;
+      const r = zone.getBoundingClientRect();
+      let dx = e.clientX - r.left - ox, dy = e.clientY - r.top - oy;
+      const d = Math.hypot(dx, dy); if (d > R) { dx *= R / d; dy *= R / d; }
+      knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+      set(dx);
+    });
+    const end = (e) => { if (e.pointerId !== id) return; id = null; set(0); rest(); };
+    zone.addEventListener('pointerup', end); zone.addEventListener('pointercancel', end); zone.addEventListener('lostpointercapture', end);
+  }
   get x() {
     const k = this.keys;
     return ((k.has('arrowright') || k.has('d') || this.touch.right) ? 1 : 0) - ((k.has('arrowleft') || k.has('a') || this.touch.left) ? 1 : 0);

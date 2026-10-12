@@ -28,6 +28,7 @@ async function boot() {
   const sound = new Sound();
   const input = new Input();
   input.bindTouch($('#juego'));
+  input.bindStick($('#stick'), $('#stick-base'), $('#stick-knob'));
   const game = new Game(sound, input);
   const world = new World($('#mundo'), game, assets);
   const hud = new Hud($('#hud'), game, world, assets);
@@ -54,10 +55,12 @@ async function boot() {
 
   let last = performance.now();
   function loop(now) {
-    const dt = Math.min((now - last) / 1000, 1 / 30); last = now;
-    game.update(dt);
-    input.endFrame();
-    world.draw(dt);
+    // Paso de lógica de máximo 1/30 s: si un cuadro tarda más, se divide en varios pasos
+    // (la velocidad real no cambia y nunca se atraviesa un suelo).
+    const frame = Math.min((now - last) / 1000, 0.1); last = now;
+    const n = Math.max(1, Math.ceil(frame / (1 / 30))), dt = frame / n;
+    for (let i = 0; i < n; i++) { game.update(dt); if (i === 0) input.endFrame(); }
+    world.draw(frame, frame);
     hud.draw();
     requestAnimationFrame(loop);
   }
