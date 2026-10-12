@@ -1,111 +1,114 @@
-// game.js — Estado del juego y update(). Aquí no se dibuja nada: draw() vive en world.js y hud.js
-// y solo lee este estado.
-import { buildLevel } from './level.js';
-import { createPlayer, updatePlayer, hurtPlayer, setState, STATE } from './player.js';
-import { GRAVITY, moveAndCollide, overlapRect, groundBelow } from './physics.js';
-import { CONFIG } from './config.js';
+// game.js — Estado del juego y update() del Nivel 1. Aquí no se dibuja nada: world.js y hud.js solo leen.
+import { buildLevel1 } from './level1.js';
+import { createPlayer, updatePlayer, setState, bounce, STATE } from './player.js';
+import { overlaps, boxHit, groundBelow } from './physics.js';
+import { CONFIG, jumpVel } from './config.js';
 import { Pool } from './pool.js';
 import { Director, setupStory } from './story.js';
+import { Inspector } from './boss.js';
 
-const HIST = 48;
+const CRATE = 0.9;
+export const DEATH_LINES = [
+  ['copia', 'Te lo dije. Bueno, no te lo dije, pero lo pensé muy fuerte.'],
+  ['copia', 'Restaurando… otra vez… nadie restaura a la Copia de Seguridad.'],
+  ['guia', 'Caer al vacío es una forma rápida de viajar. No recomendada.'],
+  ['guia', 'Según mis datos, ese salto era fácil. Mis datos se equivocan con frecuencia.'],
+  ['dip', '…*pop*']
+];
+const MEDALS = { oro: 150, plata: 190, bronce: 240 };
 
 export class Game {
   constructor(sound, input) {
     this.sound = sound; this.input = input;
-    this.L = buildLevel();
+    this.L = buildLevel1();
     this.solids = this.L.solids;
-    this.player = createPlayer(200, -72);
-    this.player.hidden = true;
-    this.mode = 'titulo'; this.paused = false;
-    this.time = 0; this.playTime = 0;
-    this.sec = 0;
+    this.player = createPlayer(0, 0, 3);
+    this.mode = 'titulo'; this.paused = false; this.trial = false;
+    this.time = 0; this.runTime = 0; this.timerOn = false;
     this.view = { w: 640, h: 360 };
-    this.cam = { x: 700, y: -560, shake: 0, fix: { x: 700, y: -560 }, look: 0, speed: 4 };
-    this.flags = {}; this.has = { sensor: false, memoria: false, energia: false };
-    this.secrets = new Set();
+    this.cam = { x: 0, y: 3, z: 10, yaw: 0, anchor: 0, shake: 0, fix: null, look: { x: 0, y: 1, z: 0 }, speed: 3 };
+    this.prev = { px: 0, py: 0, pz: 0, cx: 0, cy: 0, cz: 0 }; this.alpha = 1;
+    this.flags = {}; this.fx = { notice: 0, bubbles: false, guiaBook: -1, packet: -1, sofaFly: -1, flash: 0 };
+    this.lives = 4; this.fragments = 0; this.copias = 0; this.superT = 0;
+    this.cratesBroken = 0; this.cratesTotal = this.L.crates.length; this.fragsGot = 0;
     this.checkpoint = this.L.checkpoints[0];
-    this.dialog = null; this.toast = null; this.hint = null; this.zoneCard = null; this.vision = null;
-    this.objective = ''; this.letterbox = 0; this.prompt = null; this.sensor = 0; this.memNear = false;
-    this.fade = { a: 1, target: 1, speed: 1, color: '#000000' };
-    this.seenZones = new Set(); this.zone = null;
-    this.envName = 'titulo'; this.alarm = 0; this.music = 'silencio'; this.musicVar = 0;
-    this.auto = { x: 0, run: false, jump: false };
-    this.tilo = { x: 2160, y: -220, face: -1, anim: 'idle', t: 0, visible: true, targetX: null, speed: 150, talk: false };
-    this.lunex = { visible: false, a: 0, frag: 0 };
-    this.fx = { meteor: -1, hatch: 0, crystalFly: -1, crystalTaken: false, orb: -1, shock: -1, ruinsVision: 0, beam: 0, ringFlash: 0, route: 0, core: 0, holo: 0, endTitle: -1, collector: 0 };
-    this.ghostPrint = { state: 'oculta' };
-    this.ringsDone = 0; this.pylonsOn = 0;
-    this.particles = new Pool(() => ({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, life: 0, max: 1, g: 0, r: 1, gg: 1, b: 1, drag: 0 }), 600);
-    this.pulses = new Pool(() => ({ x: 0, y: 0, vx: 0, life: 0 }), 12);
-    this.history = Array.from({ length: HIST }, () => ({ x: 0, y: 0, face: 1, anim: 'idle', t: 0, time: -1 }));
-    this.histI = 0;
-    this.interactables = []; this.triggers = [];
+    this.deathsHere = 0; this.deaths = 0; this.lastLine = -1; this.safe = [];
+    this.dialog = null; this.bubble = null; this.guiaTip = null; this.toast = null; this.sectionCard = null;
+    this.fade = { a: 1, target: 1, speed: 1, color: '#05070d' };
+    this.letterbox = 0; this.hitStop = 0; this.hurtFlash = 0; this.dustT = 0; this.ladder = { n: 0, t: 0 };
+    this.fragBump = 0;
+    this.auto = null;  // control guionado { x, z, jump }
+    this.chase = { on: false, done: false, z: 0, speed: 0 };
+    this.section = this.L.sections[0]; this.seenSections = new Set();
+    this.shards = new Pool(() => ({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, rx: 0, ry: 0, life: 0, kind: 0 }), 160);
+    this.particles = new Pool(() => ({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, life: 0, max: 1, g: 0, drag: 0, r: 1, gg: 1, b: 1, size: 1 }), 700);
+    this.popFrags = new Pool(() => ({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, t: 0 }), 60);
+    // sólidos de las cajas
+    for (const c of this.L.crates) {
+      c.s = { x0: c.x - CRATE / 2, x1: c.x + CRATE / 2, y0: c.y, y1: c.y + CRATE, z0: c.z - CRATE / 2, z1: c.z + CRATE / 2, active: true, crate: c, mat: 'caja' };
+      this.solids.push(c.s);
+      if (c.type === 'fragmentos') c.hits = 0;
+    }
+    this.boss = new Inspector(this);
     this.director = new Director(this);
     setupStory(this);
-    this.introPlayed = false;
-    this.prev = { px: 0, py: 0, cx: 0, cy: 0 }; this.alpha = 1; this.hitStop = 0; this.hurtFlash = 0; this.dustT = 0;
+    this.save = this.loadSave();
     this.touchUI = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+    this.wish = { x: 0, z: 0 }; this.pin = { jumpPressed: false, jumpHeld: false, spinPressed: false };
+    this.hooks = {
+      onJump: () => { this.sound.sfx('salto'); this.player.sq = CONFIG.stretchJump; this.dust(5, 1.2); },
+      onLand: (vy) => {
+        const k = Math.min(1, Math.max(0, -vy) / 22);
+        this.sound.sfx(k > 0.6 ? 'caida_fuerte' : 'caida');
+        this.player.sq = 1 - (1 - CONFIG.squashLand) * (0.35 + 0.65 * k);
+        this.dust(Math.round(4 + k * 14), 1.2 + k * 2);
+        if (k > 0.7) this.addTrauma(0.25);
+      },
+      onSpin: () => { this.sound.sfx('giro'); }
+    };
   }
 
-  // ---------- utilidades para los guiones ----------
-  section(i = this.sec) { return this.L.sections[i]; }
-  secAt(x) { return this.L.sections.findIndex(s => x >= s.x0 && x <= s.x1); }
-  placePlayer(x, y, face = 1) {
-    const p = this.player;
-    p.pos.x = x - p.w / 2; p.pos.y = y - p.h; p.vel.x = 0; p.vel.y = 0; p.face = face;
-    p.onGround = false; setState(p, STATE.FALLING); p.sq = 1;
-    this.sec = this.secAt(x);
-    this.cam.anchor = undefined;
-    this.snapCamera(); this.savePrev();
-  }
-  snapCamera() { this.cam.snap = true; }
+  // ---------- utilidades ----------
+  loadSave() { try { return JSON.parse(localStorage.getItem('dip-suenio') || '{}'); } catch (e) { return {}; } }
+  writeSave() { try { localStorage.setItem('dip-suenio', JSON.stringify(this.save)); } catch (e) { /* sin almacenamiento */ } }
   addTrauma(a) { this.cam.shake = Math.min(1, this.cam.shake + a); }
-  // Posiciones del paso anterior: el render interpola entre ambas (paso fijo de 60 Hz)
-  savePrev() { const p = this.player, c = this.cam; this.prev.px = p.pos.x; this.prev.py = p.pos.y; this.prev.cx = c.x; this.prev.cy = c.y; }
-  pose(anim) { const p = this.player; p.poseAnim = anim; setState(p, STATE.POSE); p.anim = anim; p.animTime = 0; }
-  unpose() { const p = this.player; if (p.state === STATE.POSE) setState(p, STATE.IDLE); }
-  showToast(text, dur = 4.5) { this.toast = { text, t: 0, dur }; }
-  showHint(text, dur = 4) { this.hint = { text, t: 0, dur }; }
-  setObjective(t) { this.objective = t; }
-  openDialog(who, text) { this.dialog = { who, text, shown: 0, blipAcc: 0 }; }
-  findSecret(id, text) {
-    if (this.secrets.has(id)) return;
-    this.secrets.add(id); this.sound.sfx('secreto'); this.showToast(`Secreto ${this.secrets.size}/4 · ${text}`, 3.5);
+  savePrev() { const p = this.player.pos, c = this.cam, v = this.prev; v.px = p.x; v.py = p.y; v.pz = p.z; v.cx = c.x; v.cy = c.y; v.cz = c.z; }
+  placePlayer(x, y, z) {
+    const p = this.player; p.pos.x = x; p.pos.y = y; p.pos.z = z; p.vel.x = p.vel.y = p.vel.z = 0;
+    p.onGround = false; setState(p, STATE.FALLING); p.sq = 1; p.spin = 0;
+    this.cam.anchor = y; this.cam.snap = true;
   }
-  burst(x, y, n, rgb, { speed = 80, life = 0.8, g = 0, z = 0, spread = 1, up = 0, drag = 0, zs = 20 } = {}) {
-    for (let i = 0; i < n; i++) {
-      this.particles.spawn(o => {
-        const a = Math.random() * Math.PI * 2, v = speed * (0.4 + Math.random() * 0.6);
-        o.x = x; o.y = y; o.z = z + (Math.random() - 0.5) * zs;
-        o.vx = Math.cos(a) * v * spread; o.vy = Math.sin(a) * v - up; o.vz = (Math.random() - 0.5) * v * 0.4;
-        o.life = o.max = life * (0.6 + Math.random() * 0.5); o.g = g; o.drag = drag;
-        o.r = rgb[0]; o.gg = rgb[1]; o.b = rgb[2];
-      });
-    }
+  openDialog(who, text) { this.dialog = { who, text, shown: 0 }; }
+  say(who, text, dur = 2.6) { this.bubble = { who, text, t: 0, dur }; }
+  tip(text, dur = 3.2) { this.guiaTip = { text, t: 0, dur }; this.sound.sfx('guia'); }
+  showToast(text, dur = 2.5) { this.toast = { text, t: 0, dur }; }
+  burst(x, y, z, n, rgb, { speed = 3, life = 0.6, g = 0, up = 0, drag = 0, size = 1 } = {}) {
+    for (let i = 0; i < n; i++) this.particles.spawn(o => {
+      const a = Math.random() * Math.PI * 2, b = Math.random() * Math.PI - Math.PI / 2, v = speed * (0.4 + Math.random() * 0.6);
+      o.x = x; o.y = y; o.z = z; o.vx = Math.cos(a) * Math.cos(b) * v; o.vy = Math.sin(b) * v + up; o.vz = Math.sin(a) * Math.cos(b) * v;
+      o.life = o.max = life * (0.6 + Math.random() * 0.5); o.g = g; o.drag = drag; o.r = rgb[0]; o.gg = rgb[1]; o.b = rgb[2]; o.size = size;
+    });
   }
-  anchor(id) { return this.L.anchors.find(a => a.id === id); }
-  door(id) { return this.L.doors.find(d => d.id === id); }
-  playerCenter() { const p = this.player; return { x: p.pos.x + p.w / 2, y: p.pos.y + p.h / 2 }; }
+  dust(n, speed) { const p = this.player.pos; this.burst(p.x, p.y + 0.05, p.z, n, [0.75, 0.78, 0.88], { speed, life: 0.45, g: -4, up: 0.8, drag: 2, size: 1.4 }); }
 
-  // Atajo para pruebas de juego: index.html?zona=1..6 empieza ahí con lo anterior resuelto.
+  // Pruebas de juego: ?seccion=1..4 empieza ahí (el jefe es la 4)
   skipTo(n) {
-    const F = this.flags, L = this.L;
-    this.introPlayed = true; this.mode = 'juego'; this.player.hidden = false;
-    this.fade.a = 0; this.fade.target = 0; this.cam.fix = null; this.music = 'superficie';
-    this.setObjective('Prueba de zona ' + n);
-    if (n >= 3) { F.conoceTilo = F.recolector = F.compuerta = true; this.has.sensor = true; L.rocks.forEach(r => { r.inSlot = true; r.pos.x = r.slot0; r.pos.y = -220; r.s.x = r.pos.x; r.s.y = r.pos.y; }); this.triggers.forEach(t => { if (t.sec === 0 && t.x0 < 2900) t.done = true; }); this.ghostPrint.state = 'ida'; }
-    if (n >= 4) { F.portal = true; this.has.memoria = true; this.fx.crystalTaken = true; L.pylons.forEach(p => p.on = true); this.pylonsOn = 3; ['puente', 'escalera'].forEach(id => { const a = this.anchor(id); a.state = 'hecho'; a.solids.forEach(s => s.active = true); }); this.music = 'santuario'; }
-    if (n >= 5) { F.camara = true; this.ringsDone = 3; L.anchors.filter(a => a.ring !== undefined).forEach(a => a.state = 'hecho'); this.music = 'estacion'; }
-    if (n >= 6) { this.has.energia = true; F.consola = F.lunex = true; this.music = 'huida'; }
-    const at = { 1: [300, 0], 2: [1700, -140], 3: [3010, -220], 4: [6060, 0], 5: [9060, 0], 6: [11960, 0] }[n] || [300, 0];
-    this.placePlayer(at[0], at[1], 1);
-    this.checkpoint = this.L.checkpoints.find(k => k.sec === this.sec && k.x <= at[0] + 50) || this.checkpoint;
+    this.mode = 'juego'; this.fade.a = this.fade.target = 0; this.player.hidden = false; this.timerOn = true; this.flags.sofaGone = true;
+    const at = { 1: [0, 0, 3], 2: [0.5, 4.2, -109.5], 3: [0, 0, -216], 4: [0, 0, -329] }[n];
+    for (const t of this.L.tips) if (t.z > at[2] + 0.5) t.done = true;
+    for (const k of this.L.checkpoints) if (k.z >= at[2] - 0.5) k.on = true;
+    this.checkpoint = this.L.checkpoints.filter(k => k.on).pop() || this.checkpoint;
+    if (n >= 2) this.copias = 1;
+    if (n >= 4) { this.chase.done = true; this.flags.sofaGone = true; }
+    this.placePlayer(at[0], at[1], at[2]); this.savePrev();
   }
 
-  start() {
-    if (this.introPlayed) return;
-    this.introPlayed = true; this.mode = 'juego';
-    this.director.run('intro');
+  start(trial = false) {
+    this.trial = trial; this.mode = 'juego';
+    if (trial) {
+      this.fade.a = 0; this.fade.target = 0; this.placePlayer(0, 0, 3); this.timerOn = true; this.runTime = 0;
+      this.player.hidden = false; this.cam.fix = null; this.flags.sofaGone = true;
+    } else this.director.run('apertura');
   }
 
   // =====================================================================
@@ -114,436 +117,430 @@ export class Game {
     this.time += dt;
     if (inp.pressed.mute) this.sound.toggleMute();
     if (this.mode === 'titulo') {
-      if (inp.pressed.confirm || inp.pressed.any) this.start();
-      this.updateCamera(dt); this.updateAmbient(dt);
+      if (inp.pressed.trial && this.save.done) this.start(true);
+      else if (inp.pressed.confirm || inp.pressed.jump || inp.pressed.spin) this.start(false);
+      this.updateCamera(dt); this.updateAmbient(dt); return;
+    }
+    if (this.mode === 'fin') {
+      this.endT = (this.endT || 0) + dt; this.updateFade(dt); this.updateAmbient(dt);
+      if (this.endT > 2.5) { if (inp.pressed.trial) location.href = location.pathname + '?contrarreloj'; else if (inp.pressed.confirm || inp.pressed.jump) location.href = location.pathname; }
       return;
     }
-    if (this.mode === 'fin') { this.updateFade(dt); this.fx.endTitle += dt; if ((inp.pressed.confirm || inp.pressed.any) && this.fx.endTitle > 6) location.reload(); return; }
     if (inp.pressed.pause && !this.director.blocking) this.paused = !this.paused;
     if (this.paused) { if (inp.pressed.restart) location.reload(); return; }
-    this.playTime += dt;
 
-    // Diálogo abierto: avanzar texto
+    // diálogo de escena
     const dlg = this.dialog;
     if (dlg) {
       const before = Math.floor(dlg.shown);
-      dlg.shown = Math.min(dlg.text.length, dlg.shown + dt * 42);
-      if (Math.floor(dlg.shown) !== before && Math.floor(dlg.shown) % 2 === 0 && dlg.text[Math.floor(dlg.shown)] !== ' ') this.sound.blip(dlg.who);
-      if (inp.pressed.confirm) {
+      dlg.shown = Math.min(dlg.text.length, dlg.shown + dt * 45);
+      if (Math.floor(dlg.shown) !== before && before % 2 === 0) this.sound.blip(dlg.who);
+      if (inp.pressed.confirm || inp.pressed.jump || inp.pressed.spin) {
         if (dlg.shown < dlg.text.length) dlg.shown = dlg.text.length; else this.dialog = null;
-        inp.pressed.act = false; inp.pressed.jump = false; // la tecla que cierra el diálogo no salta ni interactúa
+        inp.pressed.jump = inp.pressed.spin = false;
       }
     }
-
     this.director.update(dt);
     const blocking = this.director.blocking;
-    const p = this.player;
+    if (this.timerOn && !blocking) this.runTime += dt;
 
-    // Interacción y prompt
-    this.prompt = null;
-    if (!blocking && !p.hidden) this.prompt = this.nearestInteractable();
-    let castPressed = false;
-    if (!blocking && inp.pressed.act) {
-      if (this.prompt) { this.sound.sfx('interactuar'); this.director.run(this.prompt.run); }
-      else if (this.has.memoria) castPressed = true;
-    }
-
-    // Jugador
-    const ctl = blocking ? this.auto : null;
-    const pin = {
-      x: ctl ? ctl.x : inp.x, run: ctl ? ctl.run : inp.run,
-      jumpPressed: ctl ? ctl.jump : inp.pressed.jump, jumpHeld: ctl ? ctl.jump : inp.jumpHeld, castPressed
-    };
-    if (ctl) ctl.jump = false;
-    if (!p.hidden) {
-      updatePlayer(p, pin, this.solids, dt, this.playerHooks || (this.playerHooks = {
-        onJump: () => {
-          this.sound.sfx('salto'); this.onPlayerJump(); p.sq = CONFIG.stretchJump;
-          const c = this.playerCenter(); this.burst(c.x, p.pos.y + p.h, 5, this.dustColor(), { speed: 45, life: 0.35, up: 10, g: 150, spread: 1.4 });
-        },
-        onLand: () => {
-          // Aterrizaje proporcional a la caída: squash, polvo y, si fue alta, temblor
-          const v = Math.max(0, p.lastFallSpeed || 0), k = Math.min(1, v / 900);
-          this.sound.sfx(k > 0.6 ? 'caida_fuerte' : 'caida');
-          p.sq = 1 - (1 - CONFIG.squashLand) * (0.4 + 0.6 * k);
-          const c = this.playerCenter(); this.burst(c.x, p.pos.y + p.h, Math.round(4 + k * 14), this.dustColor(), { speed: 50 + k * 90, life: 0.45, up: 15 + k * 30, g: 220, spread: 1.6 });
-          if (k > 0.75) this.addTrauma(0.22);
-        },
-        onStep: () => this.sound.sfx('paso'),
-        onPush: (s, dir) => { if (s.ent) s.ent.push = dir * CONFIG.pushSpeed; },
-        onCastFire: () => this.castMemory()
-      }));
-      p.sq = (p.sq || 1) + (1 - (p.sq || 1)) * (1 - Math.exp(-dt * 4.6 / CONFIG.squashTime));
-      if (p.state === STATE.RUNNING && p.running && p.onGround) {
-        this.dustT -= dt;
-        if (this.dustT <= 0) { this.dustT = CONFIG.runDustEvery; this.burst(p.pos.x + p.w / 2 - p.face * 8, p.pos.y + p.h, 3, this.dustColor(), { speed: 35, life: 0.35, up: 12, g: 120 }); }
-      }
-      if (p.state === STATE.PUSHING) { this.pushSnd = (this.pushSnd || 0) - dt; if (this.pushSnd <= 0) { this.pushSnd = 0.45; this.sound.sfx('empujar'); } }
-    }
-    this.recordHistory();
-
-    this.updateRocks(dt);
-    this.updatePlates(dt);
-    this.updatePhases();
-    this.updateDoors(dt);
+    this.updatePlayerStep(dt, blocking);
+    this.updateCrates(dt);
     this.updateFragments(dt);
-    this.updateSentinels(dt);
-    this.updatePulses(dt);
-    this.updateBeetles(dt);
-    this.updateAnchors(dt);
-    this.updateTilo(dt);
+    this.updateBichos(dt);
+    this.updateFormas(dt);
+    this.updateFalling(dt);
+    this.updatePickups();
+    this.updateChase(dt);
+    this.boss.update(dt);
     this.updateParticles(dt);
     this.updateFx(dt);
-    if (!blocking && !p.hidden) { this.checkTriggers(); this.checkCheckpoints(); this.checkDeath(); this.checkZone(); }
-    this.updateSensor();
+    if (!blocking) { this.checkTips(); this.checkSection(); this.checkDeath(); }
     this.updateCamera(dt);
     this.updateFade(dt);
     this.updateTimers(dt);
     this.updateAmbient(dt);
   }
 
-  nearestInteractable() {
-    const c = this.playerCenter(); let best = null, bd = 1e9;
-    for (const it of this.interactables) {
-      if (it.sec !== this.sec || (it.cond && !it.cond(this))) continue;
-      const dx = Math.abs(c.x - it.x), dy = Math.abs((this.player.pos.y + this.player.h) - it.y);
-      if (dx < (it.r || 46) && dy < 60 && dx < bd) { bd = dx; best = it; }
+  // ---------- jugador ----------
+  updatePlayerStep(dt, blocking) {
+    const p = this.player, inp = this.input;
+    if (p.hidden) return;
+    // dirección relativa a la cámara: adelante = hacia donde mira la cámara
+    let mx = 0, my = 0;
+    if (this.auto) { mx = this.auto.x; my = this.auto.y; }
+    else if (!blocking) { const m = inp.move; mx = m.x; my = m.y; }
+    // La dirección se fija mientras se mantiene el control: si la cámara gira (persecución), DIP
+    // sigue corriendo hacia donde iba hasta que sueltes; al volver a pulsar se usa la cámara nueva.
+    const camYawTarget = this.boss.active ? 0 : this.chase.on ? Math.PI : 0;
+    if (mx * mx + my * my < 0.01 || this.inputYaw === undefined) this.inputYaw = camYawTarget;
+    const yaw = this.inputYaw, fx = -Math.sin(yaw), fz = -Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);
+    this.wish.x = rx * mx + fx * my; this.wish.z = rz * mx + fz * my;
+    const pin = this.pin;
+    pin.jumpPressed = !blocking && inp.pressed.jump || !!(this.auto && this.auto.jump);
+    pin.jumpHeld = !blocking && inp.jumpHeld || !!(this.auto && this.auto.jump);
+    pin.spinPressed = !blocking && inp.pressed.spin;
+    if (this.auto) this.auto.jump = false;
+    const prevGround = p.ground;
+    updatePlayer(p, this.wish, pin, this.solids, dt, this.hooks);
+    // lado al que mira en pantalla (según la cámara real)
+    const cyaw = this.cam.yaw, sx = p.vel.x * Math.cos(cyaw) - p.vel.z * Math.sin(cyaw);
+    if (Math.abs(sx) > 0.6) p.face = Math.sign(sx);
+    // pisar cajas: rebotar y romperlas
+    if (p.onGround && p.ground && p.ground.crate && p.landVel < -2) this.stompCrate(p.ground.crate);
+    else if (p.onGround && p.ground && p.ground.crate && p.ground !== prevGround && p.ground.crate.type === 'cristal') this.stompCrate(p.ground.crate);
+    if (p.ceiling && p.ceiling.crate) this.hitCrate(p.ceiling.crate, 'cabeza');
+    if (p.onGround && p.ground && p.ground.falling) { const f = this.L.falling.find(q => q.s === p.ground); if (f && f.state === 'firme') { f.state = 'tiembla'; f.t = 0; this.sound.sfx('crujido'); } }
+    // giro: alcance sobre cajas y enemigos
+    if (p.spin > 0) this.spinHits();
+    // polvo al correr
+    if (p.state === STATE.RUNNING && p.onGround && Math.hypot(p.vel.x, p.vel.z) > 4) {
+      this.dustT -= dt; if (this.dustT <= 0) { this.dustT = CONFIG.runDustEvery; this.dust(2, 0.8); this.sound.sfx('paso'); }
     }
-    return best;
+    if (p.spin > 0 && Math.random() < 0.6) this.burst(p.pos.x, p.pos.y + 0.8, p.pos.z, 1, [0.75, 0.92, 1], { speed: 2.5, life: 0.25, size: 0.8 });
+    // lugares seguros para la ayuda dinámica
+    if (p.onGround && p.ground && !p.ground.crate && !p.ground.falling && (this.time % 0.5) < dt) {
+      this.safe.push({ x: p.pos.x, y: p.pos.y, z: p.pos.z }); if (this.safe.length > 80) this.safe.shift();
+    }
+    if (this.superT > 0) { this.superT -= dt; if (this.superT <= 0) { this.copias = 2; this.sound.musicFast = false; } }
   }
 
-  recordHistory() {
-    const p = this.player, h = this.history[this.histI];
-    h.x = p.pos.x + p.w / 2; h.y = p.pos.y + p.h; h.face = p.face; h.anim = p.anim; h.t = p.animTime; h.time = this.time;
-    this.histI = (this.histI + 1) % HIST;
-  }
-  historyAt(lag) {
-    const want = this.time - lag; let best = this.history[0];
-    for (const h of this.history) if (h.time <= want && h.time > best.time) best = h;
-    return best.time < 0 ? null : best;
-  }
-
-  onPlayerJump() {
-    // Escena 2: al saltar el desnivel aparece una huella delante
-    const c = this.playerCenter();
-    if (this.ghostPrint.state === 'oculta' && this.sec === 0 && c.x > 1620 && c.x < 1800) { this.ghostPrint.state = 'visible'; this.sound.sfx('crujido'); }
-  }
-
-  castMemory() {
-    const p = this.player, hx = p.pos.x + p.w / 2 + p.face * 26, hy = p.pos.y + 30;
-    let best = null, bd = 210;
-    for (const a of this.L.anchors) {
-      if (a.state !== 'latente' || a.sec !== this.sec) continue;
-      const d = Math.hypot(a.x - hx, a.y - hy);
-      if (d < bd) { bd = d; best = a; }
-    }
-    if (best) {
-      best.state = 'formando'; best.t = 0; best.fromX = hx; best.fromY = hy;
-      this.sound.sfx('proyectar'); this.sound.sfx('reconstruir');
-      for (let i = 0; i < 26; i++) this.particles.spawn(o => {
-        const k = i / 26; o.x = hx; o.y = hy; o.z = 10;
-        o.vx = (best.x - hx) * (0.9 + Math.random() * 0.4) / 0.6; o.vy = (best.y - hy) / 0.6 + (Math.random() - 0.5) * 60; o.vz = 0;
-        o.life = o.max = 0.6 * (0.7 + k * 0.3); o.g = 0; o.drag = 0; o.r = 0.75; o.gg = 0.92; o.b = 0.97;
-      });
-    } else {
-      this.sound.sfx('nada');
-      this.burst(hx, hy, 10, [0.75, 0.92, 0.97], { speed: 50, life: 0.4 });
-      
-    }
-  }
-
-  // ---------- mecánicas ----------
-  updateRocks(dt) {
-    for (const r of this.L.rocks) {
-      r.vel.x = r.inSlot ? 0 : r.push; r.push = 0;
-      r.vel.y = Math.min(r.vel.y + GRAVITY * dt, 900);
-      moveAndCollide(r, this.solids, dt);
-      r.s.x = r.pos.x; r.s.y = r.pos.y;
-      if (!r.inSlot && r.pos.y + r.h > -195) {
-        r.inSlot = true; r.s.pushable = false;
-        this.sound.sfx('caida'); this.sound.sfx('empujar');
-        this.burst(r.pos.x + 25, r.pos.y, 14, [0.92, 0.9, 0.85], { speed: 90, life: 0.7, g: 300, up: 60 });
-        if (this.L.rocks.every(k => k.inSlot)) this.setObjective('Baja la palanca');
-      }
-    }
-  }
-  updatePlates(dt) {
+  hurt(fromX, fromZ, cause = 'golpe') {
     const p = this.player;
-    for (const pl of this.L.plates) {
-      pl.t += dt;
-      if (pl.state === 'firme') {
-        if (p.onGround && p.ground === pl.s) { pl.state = 'tiembla'; pl.t = 0; this.sound.sfx('crujido'); }
-      } else if (pl.state === 'tiembla') {
-        if (pl.t > 0.45) { pl.state = 'cae'; pl.t = 0; pl.s.active = false; this.sound.sfx('placa'); this.burst(pl.x + 33, pl.y + 8, 12, [0.85, 0.83, 0.78], { speed: 70, life: 0.8, g: 500 }); }
-      } else if (pl.state === 'cae') {
-        if (pl.t > pl.respawn && !overlapRect(pl.x, pl.y, 66, 16, { x: p.pos.x, y: p.pos.y, w: p.w, h: p.h })) { pl.state = 'firme'; pl.t = 0; pl.s.active = true; }
+    if (p.invuln > 0 || p.state === STATE.DEAD || this.director.blocking || p.hidden) return;
+    if (this.superT > 0) return;
+    if (this.copias > 0) {
+      this.copias--; p.invuln = 1.2; this.sound.sfx('copia_rompe'); this.addTrauma(0.45); this.hitStop = CONFIG.hitStop; this.hurtFlash = 0.6;
+      const dx = p.pos.x - fromX, dz = p.pos.z - fromZ, d = Math.hypot(dx, dz) || 1;
+      p.vel.x = dx / d * 6; p.vel.z = dz / d * 6; p.vel.y = 6; p.onGround = false; setState(p, STATE.HURT);
+      this.say('copia', ['Otra vez me destruyen. Qué novedad.', 'Auch. Por ti. Siempre por ti.'][Math.floor(Math.random() * 2)]);
+      return;
+    }
+    this.die(cause);
+  }
+  die(cause = 'golpe') {
+    const p = this.player; this.lastCause = cause;
+    if (p.state === STATE.DEAD || this.director.blocking) return;
+    setState(p, STATE.DEAD); p.vel.x = p.vel.z = 0;
+    this.sound.sfx('muerte'); this.addTrauma(0.6); this.hitStop = CONFIG.hitStop; this.hurtFlash = 1;
+    this.burst(p.pos.x, p.pos.y + 0.8, p.pos.z, 24, [0.6, 0.85, 1], { speed: 5, life: 0.7, size: 1.2 });
+    this.director.run('reaparecer');
+  }
+  deathLine() {
+    if (this.deathsHere >= 10 && !this.flags.tendencia) { this.flags.tendencia = true; return ['guia', 'Consejo: prueba a no morir. Es tendencia.']; }
+    let i; do { i = Math.floor(Math.random() * DEATH_LINES.length); } while (i === this.lastLine && DEATH_LINES.length > 1);
+    this.lastLine = i; return DEATH_LINES[i];
+  }
+
+  // ---------- cajas ----------
+  stompCrate(c) {
+    const p = this.player;
+    if (!c.alive) return;
+    if (c.type === 'rebote') { bounce(p, CONFIG.bounceBoxMult * (this.input.jumpHeld ? 1.12 : 1)); this.sound.sfx('rebote'); c.hits++; c.squash = 1; this.giveFrag(c.x, c.y + 1, c.z); if (c.hits >= 5) this.breakCrate(c); return; }
+    if (c.type === 'cristal') {
+      c.hits++; c.squash = 1;
+      if (c.hits >= 2) { this.breakCrate(c); return; }
+      this.sound.sfx('cristal_raja'); return;
+    }
+    if (c.type === 'tnt') { bounce(p); this.startTnt(c); return; }
+    bounce(p, this.input.jumpHeld ? CONFIG.bounceMult * 1.15 : CONFIG.bounceMult);
+    this.hitCrate(c, 'pisar');
+  }
+  hitCrate(c, how) {
+    if (!c.alive) return;
+    if (c.type === 'tnt') { if (how === 'giro') this.explode(c); else this.startTnt(c); return; }
+    if (c.type === 'fragmentos' && how !== 'giro') { c.hits++; c.squash = 1; this.giveFrag(c.x, c.y + 1, c.z); this.sound.sfx('rebote'); if (c.hits >= 6) this.breakCrate(c); return; }
+    if (c.type === 'rebote' && how !== 'giro') { c.squash = 1; return; }
+    this.breakCrate(c);
+  }
+  breakCrate(c) {
+    if (!c.alive) return;
+    c.alive = false; c.s.active = false; this.cratesBroken++;
+    this.sound.sfx(c.type === 'cristal' ? 'cristal' : 'caja');
+    const n = c.type === 'fragmentos' ? Math.max(1, 6 - c.hits) : c.type === 'normal' ? 1 + Math.floor(Math.random() * 2) : 0;
+    for (let i = 0; i < n; i++) this.giveFrag(c.x, c.y + 0.5, c.z);
+    for (let i = 0; i < 10; i++) this.shards.spawn(o => {
+      o.x = c.x + (Math.random() - 0.5) * 0.6; o.y = c.y + 0.45 + (Math.random() - 0.5) * 0.6; o.z = c.z + (Math.random() - 0.5) * 0.6;
+      o.vx = (Math.random() - 0.5) * 7; o.vy = 3 + Math.random() * 5; o.vz = (Math.random() - 0.5) * 7; o.rx = Math.random() * 6; o.ry = Math.random() * 6; o.life = 1.1;
+      o.kind = c.type === 'cristal' ? 1 : c.type === 'tnt' ? 2 : 0;
+    });
+    if (c.type === 'checkpoint') this.setCheckpoint({ x: c.x, y: c.y, z: c.z, sec: this.section.n });
+    // cajas apoyadas encima caen
+    for (const o of this.L.crates) if (o.alive && Math.abs(o.x - c.x) < 0.1 && Math.abs(o.z - c.z) < 0.1 && o.y > c.y + 0.5) { o.y -= CRATE; o.s.y0 -= CRATE; o.s.y1 -= CRATE; }
+  }
+  startTnt(c) { if (c.fuse === undefined) { c.fuse = 3; c.beep = 0; this.sound.sfx('tnt'); } }
+  explode(c) {
+    if (!c.alive) return;
+    c.alive = false; c.s.active = false; this.cratesBroken++; c.fuse = undefined;
+    this.sound.sfx('explosion'); this.addTrauma(0.7);
+    this.burst(c.x, c.y + 0.5, c.z, 40, [1, 0.55, 0.2], { speed: 9, life: 0.7, size: 2 });
+    this.burst(c.x, c.y + 0.5, c.z, 20, [0.3, 0.3, 0.35], { speed: 4, life: 1.2, up: 2, drag: 1.5, size: 2.5 });
+    const R = 2.4;
+    for (const o of this.L.crates) if (o.alive && Math.hypot(o.x - c.x, o.y - c.y, o.z - c.z) < R) { if (o.type === 'tnt') { o.fuse = 0.15; } else this.breakCrate(o); }
+    for (const b of this.L.bichos) if (b.alive && Math.hypot(b.x - c.x, b.z - c.z) < R) this.killBicho(b, c.x, c.z);
+    const p = this.player.pos;
+    if (Math.hypot(p.x - c.x, p.y + 0.8 - (c.y + 0.45), p.z - c.z) < R + 0.3) this.hurt(c.x, c.z, 'explosion');
+  }
+  updateCrates(dt) {
+    for (const c of this.L.crates) {
+      if (c.squash) c.squash = Math.max(0, c.squash - dt * 6);
+      if (c.alive && c.fuse !== undefined) {
+        const prev = Math.ceil(c.fuse); c.fuse -= dt;
+        if (Math.ceil(c.fuse) !== prev && c.fuse > 0) this.sound.sfx('tnt');
+        if (c.fuse <= 0) this.explode(c);
       }
     }
   }
-  updatePhases() {
-    const p = this.player, box = { x: p.pos.x, y: p.pos.y, w: p.w, h: p.h };
-    for (const ph of this.L.phases) {
-      const k = ((this.time / ph.cycle) + ph.offset) % 1;
-      const want = k < 0.62;
-      ph.k = k; ph.warn = k > 0.47 && k < 0.62;
-      if (want && !ph.s.active && overlapRect(ph.s.x, ph.s.y, ph.s.w, ph.s.h, box)) continue;
-      ph.s.active = want;
+  spinHits() {
+    const p = this.player.pos, R = CONFIG.spinRadius;
+    for (const c of this.L.crates) {
+      if (!c.alive) continue;
+      const dx = c.x - p.x, dz = c.z - p.z;
+      if (Math.abs(dx) < R + 0.45 && Math.abs(dz) < R + 0.45 && c.y < p.y + 1.5 && c.y + CRATE > p.y - 0.2) this.hitCrate(c, 'giro');
     }
+    for (const b of this.L.bichos) if (b.alive && !b.launched && Math.hypot(b.x - p.x, b.z - p.z) < R + 0.4 && Math.abs(b.y - p.y) < 1.4) this.killBicho(b, p.x, p.z, true);
+    this.boss.onSpin(p);
   }
-  updateDoors(dt) {
-    const p = this.player, c = this.playerCenter(), F = this.flags;
-    for (const d of this.L.doors) {
-      if (d.mode === 'salta') {
-        d.t += dt;
-        if (d.t > d.period) {
-          const nx = d.xs[(d.k + 1) % d.xs.length];
-          if (!overlapRect(nx - 6, d.s.y, d.s.w + 12, d.s.h, { x: p.pos.x, y: p.pos.y, w: p.w, h: p.h })) {
-            d.k = (d.k + 1) % d.xs.length; d.s.x = nx; d.t = 0; d.flash = 0.25;
-            if (this.sec === 3) this.sound.sfx('metal');
-          }
-        }
-        d.flash = Math.max(0, (d.flash || 0) - dt);
-        continue;
-      }
-      let want = d.open;
-      if (d.id === 'compuerta') want = !!F.compuerta;
-      else if (d.id === 'portal') want = !!F.portal;
-      else if (d.id === 'camara') want = !!F.camara;
-      else if (d.id === 'd1') want = this.sec === 2 && c.x > 9170;
-      else if (d.id === 'd2') { const dist = Math.abs(c.x - 9975); if (this.sec === 2 && dist < 105) want = false; else if (dist > 230) want = true; else want = d.open; }
-      else if (d.id === 'd3') want = this.has.energia;
-      if (want !== d.open) { d.open = want; if (this.sec === this.secAt(d.s.x)) this.sound.sfx('puerta'); }
-      d.t = Math.max(0, Math.min(1, d.t + (d.open ? dt : -dt) / 0.7));
-      d.s.active = d.t < 0.8;
-    }
+
+  // ---------- fragmentos ----------
+  giveFrag(x, y, z) {
+    this.popFrags.spawn(o => { o.x = x; o.y = y; o.z = z; o.vx = (Math.random() - 0.5) * 3; o.vy = 5 + Math.random() * 2; o.vz = (Math.random() - 0.5) * 3; o.t = 0; });
+  }
+  collectFrag(x, y, z) {
+    this.fragments++; this.fragsGot++; this.fragBump = 1;
+    this.ladder.n = this.ladder.t > 0 ? Math.min(this.ladder.n + 1, 14) : 0; this.ladder.t = 1;
+    this.sound.fragment(this.ladder.n);
+    this.burst(x, y, z, 4, [1, 0.85, 0.4], { speed: 2, life: 0.3, size: 0.8 });
+    if (this.fragments >= 100) { this.fragments -= 100; this.lives++; this.sound.sfx('vida'); this.showToast('¡Vida extra!'); }
   }
   updateFragments(dt) {
-    const p = this.player;
-    for (const f of this.L.fragments) {
-      f.x += f.dir * f.speed * dt;
-      if (f.x > f.x1) { f.x = f.x1; f.dir = -1; } else if (f.x < f.x0) { f.x = f.x0; f.dir = 1; }
-      if (overlapRect(f.x - 8, f.y - 16, 16, 16, { x: p.pos.x, y: p.pos.y, w: p.w, h: p.h })) this.hurt(f.x);
+    const p = this.player.pos, M = CONFIG.magnetRadius;
+    this.ladder.t = Math.max(0, this.ladder.t - dt);
+    this.fragBump = Math.max(0, this.fragBump - dt * 4);
+    if (this.player.hidden) return;
+    for (const f of this.L.frags) {
+      if (!f.alive) continue;
+      const dx = p.x - f.x, dy = p.y + 0.8 - f.y, dz = p.z - f.z, d = Math.hypot(dx, dy, dz);
+      if (d < 0.75) { f.alive = false; this.collectFrag(f.x, f.y, f.z); }
+      else if (d < M) { const k = Math.min(1, dt * 12 * (1 - d / M + 0.3)); f.x += dx * k; f.y += dy * k; f.z += dz * k; }
     }
-  }
-  updateSentinels(dt) {
-    const p = this.player, feetX = p.pos.x + p.w / 2, feetY = p.pos.y + p.h;
-    for (const s of this.L.sentinels) {
-      s.t += dt;
-      const z = s.zone, inZone = this.sec === s.sec && feetX > z.x && feetX < z.x + z.w && feetY > z.y && feetY <= z.y + z.h;
-      if (s.state === 'dormido') {
-        if (inZone) { s.state = 'despierta'; s.t = 0; this.sound.sfx('despertar'); }
-      } else if (s.state === 'despierta') {
-        if (s.t > 0.7) { s.state = 'activo'; s.t = 0; s.cool = 0.1; }
-      } else if (s.state === 'activo') {
-        s.cool -= dt;
-        if (inZone) s.lost = 0; else s.lost = (s.lost || 0) + dt;
-        if (s.cool <= 0 && inZone) {
-          s.cool = 1.4;
-          const dir = feetX < s.x ? -1 : 1;
-          this.pulses.spawn(o => { o.x = s.x + dir * 30; o.y = z.y + z.h - 40; o.vx = dir * 175; o.life = 2.6; });
-          this.sound.sfx('pulso');
-        }
-        if (s.lost > 1.8) { s.state = 'dormido'; s.t = 0; }
-      }
-    }
-  }
-  updatePulses(dt) {
-    const p = this.player, box = { x: p.pos.x, y: p.pos.y, w: p.w, h: p.h };
-    this.pulses.forEachActive(o => {
-      o.x += o.vx * dt; o.life -= dt;
-      if (Math.random() < 0.5) this.particles.spawn(q => { q.x = o.x; q.y = o.y + (Math.random() - 0.5) * 14; q.z = 0; q.vx = -o.vx * 0.1; q.vy = 0; q.vz = 0; q.life = q.max = 0.3; q.g = 0; q.drag = 0; q.r = 1; q.gg = 0.45; q.b = 0.3; });
-      if (overlapRect(o.x - 9, o.y - 9, 18, 18, box)) { this.hurt(o.x); o.active = false; }
-      if (o.life <= 0) o.active = false;
+    this.popFrags.forEachActive(o => {
+      o.t += dt;
+      const dx = p.x - o.x, dy = p.y + 0.8 - o.y, dz = p.z - o.z, d = Math.hypot(dx, dy, dz);
+      if (o.t > 0.35) { const k = Math.min(1, dt * 10); o.x += dx * k; o.y += dy * k; o.z += dz * k; }
+      else { o.vy -= 18 * dt; o.x += o.vx * dt; o.y += o.vy * dt; o.z += o.vz * dt; }
+      if (d < 0.6 || o.t > 2) { o.active = false; this.collectFrag(o.x, o.y, o.z); }
     });
   }
-  updateBeetles(dt) {
-    const c = this.playerCenter();
-    for (const b of this.L.beetles) {
-      b.t += dt;
-      const d = c.x - b.x, near = this.sec === 0 && Math.abs(d) < 130 && Math.abs(c.y - b.y) < 120;
-      if (b.state === 'pasea') {
-        b.x += b.dir * 26 * dt;
-        if (Math.abs(b.x - b.hx) > 60) b.dir = Math.sign(b.hx - b.x);
-        if (near) { b.state = 'huye'; b.t = 0; b.dir = d > 0 ? -1 : 1; }
-      } else if (b.state === 'huye') {
-        b.x += b.dir * 190 * dt;
-        if (b.t > 0.9) { b.state = 'escondido'; b.t = 0; this.burst(b.x, b.y, 6, [0.9, 0.86, 0.78], { speed: 40, life: 0.5, g: 200, up: 30 }); }
-      } else if (b.state === 'escondido') {
-        if (b.t > 5 && Math.abs(c.x - b.hx) > 260) { b.state = 'pasea'; b.x = b.hx; b.t = 0; }
-      }
-    }
-  }
-  updateAnchors(dt) {
+
+  // ---------- enemigos ----------
+  updateBichos(dt) {
     const p = this.player;
-    for (const a of this.L.anchors) {
-      if (a.state !== 'formando') continue;
-      a.t += dt;
-      if (a.t >= 1.3) {
-        a.state = 'hecho';
-        for (const s of a.solids) {
-          s.active = true;
-          if (overlapRect(s.x, s.y, s.w, s.h, { x: p.pos.x, y: p.pos.y, w: p.w, h: p.h })) { p.pos.y = s.y - p.h; p.vel.y = 0; }
-        }
-        this.burst(a.x, a.y, 30, [0.75, 0.92, 0.97], { speed: 120, life: 1.0 });
-        this.director.run('ancla_' + a.id);
+    for (const b of this.L.bichos) {
+      if (!b.alive) continue;
+      b.t += dt;
+      if (b.launched) {
+        b.vy -= 20 * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt; b.spinA = (b.spinA || 0) + dt * 18;
+        if (b.t > 1.4) b.alive = false;
+        continue;
+      }
+      // patrulla con saltos glitch de unos centímetros
+      const k = b.axis === 'x' ? 'x' : 'z', home = b.axis === 'x' ? b.hx : b.hz;
+      b[k] += b.dir * 1.4 * dt;
+      if (Math.abs(b[k] - home) > b.range) { b[k] = home + Math.sign(b[k] - home) * b.range; b.dir *= -1; }
+      b.glitch = Math.max(0, b.glitch - dt);
+      if (b.t > 1.1 + Math.random() * 0.4) { b.t = 0; b.glitch = 0.12; b.x += (Math.random() - 0.5) * 0.5; b.z += (Math.random() - 0.5) * 0.5; }
+      if (p.hidden || p.state === STATE.DEAD) continue;
+      const dx = p.pos.x - b.x, dz = p.pos.z - b.z;
+      if (Math.abs(dx) < 0.62 && Math.abs(dz) < 0.62 && p.pos.y < b.y + 0.8 && p.pos.y + p.h > b.y) {
+        if (p.vel.y < -1 && p.pos.y > b.y + 0.25) { this.killBicho(b, p.pos.x, p.pos.z); bounce(p, this.input.jumpHeld ? 1.05 : CONFIG.bounceMult); }
+        else if (p.spin <= 0) this.hurt(b.x, b.z, 'bicho');
       }
     }
   }
-  updateTilo(dt) {
-    const t = this.tilo; t.t += dt;
-    if (t.targetX !== null) {
-      const d = t.targetX - t.x;
-      if (Math.abs(d) < 3) { t.x = t.targetX; t.targetX = null; }
-      else { t.x += Math.sign(d) * Math.min(Math.abs(d), t.speed * dt); t.face = Math.sign(d); }
-    }
-    const talking = this.dialog && this.dialog.who === 'tilo' && this.dialog.shown < this.dialog.text.length;
-    const a = t.targetX !== null ? 'walk' : (t.wave ? 'wave' : (talking ? 'talk' : 'idle'));
-    if (a !== t.anim) { t.anim = a; t.t = 0; }
+  killBicho(b, fx, fz, launch = false) {
+    this.sound.sfx('bicho'); this.hitStop = Math.max(this.hitStop, 0.05); this.addTrauma(0.15);
+    this.burst(b.x, b.y + 0.3, b.z, 12, [1, 0.3, 0.8], { speed: 4, life: 0.4, size: 1 });
+    if (launch) {
+      const dx = b.x - fx, dz = b.z - fz, d = Math.hypot(dx, dz) || 1;
+      b.launched = true; b.t = 0; b.vx = dx / d * 12; b.vz = dz / d * 12 - 4; b.vy = 7;
+    } else b.alive = false;
+    this.giveFrag(b.x, b.y + 0.5, b.z);
   }
+  updateFormas(dt) {
+    const p = this.player;
+    for (const f of this.L.formas) {
+      if (!f.alive) continue;
+      f.t += dt;
+      if (this.chase.on && f.z > this.chase.z) continue;
+      f.x += f.dir * f.speed * dt;
+      if (Math.abs(f.x - f.hx) > f.range) { f.x = f.hx + Math.sign(f.x - f.hx) * f.range; f.dir *= -1; }
+      if (p.hidden || p.state === STATE.DEAD) continue;
+      if (Math.abs(p.pos.x - f.x) < 1.05 && Math.abs(p.pos.z - f.z) < 0.95 && p.pos.y < f.y + 1.1) {
+        if (p.vel.y < -1 && p.pos.y > f.y + 0.7) { bounce(p, 0.9); this.sound.sfx('rebote'); }
+        else this.hurt(f.x, f.z, 'formateadora');
+      }
+    }
+  }
+  updateFalling(dt) {
+    const p = this.player;
+    for (const f of this.L.falling) {
+      f.t += dt;
+      if (f.state === 'tiembla' && f.t > 0.5) { f.state = 'cae'; f.t = 0; f.vy = 0; this.sound.sfx('placa'); }
+      if (f.state === 'cae') {
+        f.vy -= 22 * dt; f.y += f.vy * dt; f.s.y0 = f.top - 0.35 + f.y; f.s.y1 = f.top + f.y;
+        if (f.t > 1.2) { f.s.active = false; }
+        if (f.t > 3.2 && !(p.pos.z < f.s.z1 + 0.5 && p.pos.z > f.s.z0 - 0.5 && Math.abs(p.pos.x - (f.s.x0 + f.s.x1) / 2) < 2)) { f.state = 'firme'; f.t = 0; f.y = 0; f.s.y0 = f.top - 0.35; f.s.y1 = f.top; f.s.active = true; }
+      }
+    }
+  }
+  updatePickups() {
+    const p = this.player;
+    if (p.hidden) return;
+    for (const c of this.L.copias) {
+      if (c.got || Math.hypot(p.pos.x - c.x, p.pos.z - c.z) > 0.9 || Math.abs(p.pos.y - c.y) > 1.5) continue;
+      c.got = true; this.addCopia(c.first);
+    }
+    for (const pg of this.L.pages) {
+      if (pg.got || Math.hypot(p.pos.x - pg.x, p.pos.z - pg.z) > 0.9 || Math.abs(p.pos.y - pg.y) > 1.6) continue;
+      pg.got = true; this.sound.sfx('pagina');
+      this.showToast(`Página de la Guía ${this.L.pages.filter(q => q.got).length}/4 · ${pg.title}`, 3);
+    }
+    for (const k of this.L.checkpoints) {
+      if (k.on || p.pos.z > k.z) continue;
+      k.on = true; if (!this.checkpoint || k.z < this.checkpoint.z) this.setCheckpoint(k, true);
+    }
+  }
+  addCopia(first) {
+    this.sound.sfx('copia');
+    if (this.copias >= 2) { this.copias = 3; this.superT = 8; this.sound.musicFast = true; this.say('copia', '¿Tres? Somos invencibles. Por ocho segundos.'); return; }
+    this.copias++;
+    if (first && !this.trial) this.say('copia', 'Hola. Me crearon para protegerte. Moriré pronto. Es mi destino.', 4);
+  }
+  setCheckpoint(k, silent = false) {
+    if (this.checkpoint !== k) { this.deathsHere = 0; this.flags.tendencia = false; this.flags.ayuda5 = false; }
+    this.checkpoint = k;
+    if (!silent) { this.sound.sfx('checkpoint'); this.burst(k.x, k.y + 1, k.z, 20, [0.6, 1, 0.8], { speed: 4, life: 0.8 }); }
+  }
+
+  // ---------- persecución del vacío ----------
+  updateChase(dt) {
+    const ch = this.chase, p = this.player, sp = this.L.spots;
+    if (!ch.on && !ch.done && p.pos.z < sp.chaseStart.z && !p.hidden) this.director.run('persecucion', { block: false });
+    if (!ch.on) return;
+    ch.speed = Math.min(6.85, ch.speed + dt * 1.2);
+    ch.z -= ch.speed * dt;
+    for (const s of this.solids) if (!s.erased && s.z0 > ch.z && s.z0 < -200 && !s.wall) { s.erased = true; s.active = false; }
+    if (p.pos.z > ch.z - 0.3 && p.state !== STATE.DEAD) this.die('vacio');
+    if (p.pos.z < sp.chaseEnd.z) { ch.on = false; ch.done = true; this.director.run('finPersecucion'); }
+    if (Math.random() < 0.6) this.burst((Math.random() - 0.5) * 8, Math.random() * 4, ch.z, 1, [0.5, 0.2, 0.9], { speed: 1, life: 0.6, size: 1.5 });
+  }
+  resetChase(z) {
+    for (const s of this.solids) if (s.erased && !(s.crate && !s.crate.alive)) { s.erased = false; s.active = true; }
+    this.chase.z = z + 10; this.chase.speed = 4.5;
+  }
+
+  // ---------- secciones, consejos, muerte ----------
+  checkTips() {
+    const p = this.player;
+    for (const t of this.L.tips) {
+      if (t.done || p.pos.z > t.z) continue;
+      t.done = true;
+      if (t.who === 'evento' || !this.trial) this.showTip(t);
+    }
+  }
+  checkSection() {
+    const z = this.player.pos.z, s = this.L.sections.find(q => z <= q.z0 && z > q.z1);
+    if (s && s !== this.section) {
+      this.section = s;
+      if (!this.seenSections.has(s.n)) { this.seenSections.add(s.n); this.sectionCard = { n: s.n, name: s.name, t: 0 }; }
+    }
+  }
+  checkDeath() { if (this.player.pos.y < -6 && this.player.state !== STATE.DEAD) this.die('vacio'); }
+
+  // ---------- cámara ----------
+  updateCamera(dt) {
+    const p = this.player, c = this.cam, C = CONFIG;
+    const damp = (a, b, l) => a + (b - a) * (1 - Math.exp(-l * dt));
+    // ancla vertical: no sigue cada salto
+    if (p.onGround || p.pos.y < c.anchor - C.camAnchorDrop || c.snap) c.anchor = p.pos.y;
+    let tx, ty, tz, lx, ly, lz;
+    if (c.fix) { tx = c.fix.x; ty = c.fix.y; tz = c.fix.z; lx = c.fix.lx; ly = c.fix.ly; lz = c.fix.lz; }
+    else if (this.boss.active) {
+      const a = this.L.spots.arena;
+      tx = p.pos.x * 0.45; ty = 9.5; tz = a.z + 15; lx = p.pos.x * 0.55; ly = 1.2; lz = (p.pos.z + a.z - 4) / 2;
+      c.yaw = damp(c.yaw, 0, C.camYawLambda);
+    } else {
+      const targetYaw = this.chase.on ? Math.PI : 0;
+      c.yaw = damp(c.yaw, targetYaw, C.camYawLambda);
+      const fx = -Math.sin(c.yaw), fz = -Math.cos(c.yaw);
+      // mientras gira (persecución) la cámara se acerca y sube para no atravesar las fachadas
+      const turn = Math.abs(Math.sin(c.yaw)), dist = C.camDist * (1 - 0.6 * turn);
+      tx = p.pos.x * 0.6 - fx * dist; ty = c.anchor + C.camHeight + 2.5 * turn; tz = p.pos.z - fz * dist;
+      lx = p.pos.x * 0.8 + fx * C.camLookAhead; ly = c.anchor + 1; lz = p.pos.z + fz * C.camLookAhead;
+    }
+    if (c.snap) { c.x = tx; c.y = ty; c.z = tz; c.look.x = lx; c.look.y = ly; c.look.z = lz; c.snap = false; this.savePrev(); }
+    else {
+      const sp = c.fix ? c.speed : C.camFollowXZ;
+      c.x = damp(c.x, tx, sp); c.z = damp(c.z, tz, sp); c.y = damp(c.y, ty, c.fix ? c.speed : C.camFollowY);
+      const k = 1 - Math.exp(-10 * dt);
+      c.look.x += (lx - c.look.x) * k; c.look.y += (ly - c.look.y) * k; c.look.z += (lz - c.look.z) * k;
+    }
+    c.shake = Math.max(0, c.shake - dt * C.shakeDecay);
+    p.shadowY = groundBelow(p.pos.x, p.pos.y + 0.1, p.pos.z, this.solids);
+  }
+  updateFx(dt) {
+    const f = this.fx, sp = this.L.spots;
+    if (f.drone !== undefined && f.drone >= 0) { if (f.drone < 1) f.drone = Math.min(1, f.drone + dt / 2.2); else if (f.drone >= 2 && f.drone < 3) f.drone = Math.min(3, f.drone + dt / 2); }
+    if (f.guiaBook >= 0) f.guiaBook += dt;
+    if (f.sofaFly >= 0) f.sofaFly += dt;
+    if (f.packet >= 0 && f.packet < 1) f.packet = Math.min(1, f.packet + dt / 4.5);
+    if (f.bubbles && Math.random() < dt * 2.2) {
+      const p = this.player.pos; this.sound.sfx('burbuja');
+      this.particles.spawn(o => { o.x = p.x + 0.35; o.y = p.y + 1.3; o.z = p.z + 0.3; o.vx = 0.2 + Math.random() * 0.3; o.vy = 0.6 + Math.random() * 0.4; o.vz = 0.1; o.life = o.max = 2.4; o.g = 0; o.drag = 0; o.r = 0.8; o.gg = 0.95; o.b = 1; o.size = 2.4; });
+    }
+  }
+  updateFade(dt) { const f = this.fade; if (f.a < f.target) f.a = Math.min(f.target, f.a + dt * f.speed); else if (f.a > f.target) f.a = Math.max(f.target, f.a - dt * f.speed); }
   updateParticles(dt) {
     this.particles.forEachActive(o => {
-      o.vy += o.g * dt;
-      if (o.drag) { const k = Math.max(0, 1 - o.drag * dt); o.vx *= k; o.vy *= k; }
-      o.x += o.vx * dt; o.y += o.vy * dt; o.z += o.vz * dt;
+      o.vy -= o.g * dt; if (o.drag) { const k = Math.max(0, 1 - o.drag * dt); o.vx *= k; o.vy *= k; o.vz *= k; }
+      o.x += o.vx * dt; o.y += o.vy * dt; o.z += o.vz * dt; o.life -= dt; if (o.life <= 0) o.active = false;
+    });
+    this.shards.forEachActive(o => {
+      o.vy -= 22 * dt; o.x += o.vx * dt; o.y += o.vy * dt; o.z += o.vz * dt; o.rx += dt * 9; o.ry += dt * 7;
       o.life -= dt; if (o.life <= 0) o.active = false;
     });
   }
-  updateFx(dt) {
-    const f = this.fx;
-    if (f.meteor >= 0) f.meteor += dt;
-    if (f.crystalFly >= 0 && f.crystalFly < 1) f.crystalFly = Math.min(1, f.crystalFly + dt / 0.9);
-    if (f.orb >= 0) f.orb += dt;
-    if (f.shock >= 0) f.shock += dt;
-    if (f.endTitle >= 0) f.endTitle += dt;
-    f.ringFlash = Math.max(0, f.ringFlash - dt * 0.6);
-    if (this.flags.recolector) f.collector += dt;
-    if (this.ghostPrint.state === 'visible') {
-      const c = this.playerCenter();
-      if (Math.abs(c.x - 1880) < 70) { this.ghostPrint.state = 'desvanece'; this.ghostPrint.t = 0; }
-    } else if (this.ghostPrint.state === 'desvanece') { this.ghostPrint.t += dt; if (this.ghostPrint.t > 0.8) this.ghostPrint.state = 'ida'; }
-    this.lunex.frag = this.lunex.fragTarget !== undefined ? this.lunex.frag + (this.lunex.fragTarget - this.lunex.frag) * Math.min(1, dt * 3) : this.lunex.frag;
-    this.lunex.a += ((this.lunex.visible ? 1 : 0) - this.lunex.a) * Math.min(1, dt * 2.5);
-    // vibración leve del teléfono cerca de estructuras antiguas
-    if (this.has.sensor && this.sensor > 0.75 && navigator.vibrate) {
-      this.vibT = (this.vibT || 0) - dt;
-      if (this.vibT <= 0) { this.vibT = 1.2; try { navigator.vibrate(25); } catch (e) { /* sin vibración */ } }
-    }
-  }
-
-  hurt(fromX) {
-    const p = this.player;
-    if (this.director.blocking) return;
-    if (hurtPlayer(p, fromX)) {
-      this.sound.sfx('dano'); this.addTrauma(0.55); this.hitStop = CONFIG.hitStop; this.hurtFlash = 1;
-      const c = this.playerCenter(); this.burst(c.x, c.y, 10, [0.42, 0.67, 0.8], { speed: 90, life: 0.5 });
-      if (p.energy <= 0) this.director.run('reaparecer');
-    }
-  }
-
-  checkTriggers() {
-    const c = this.playerCenter();
-    for (const t of this.triggers) {
-      if (t.done || t.sec !== this.sec) continue;
-      if (c.x >= t.x0 && c.x <= t.x1 && c.y >= (t.y0 ?? -1e9) && c.y <= (t.y1 ?? 1e9) && (!t.cond || t.cond(this))) {
-        if (t.once !== false) t.done = true;
-        this.director.run(t.run);
-      }
-    }
-  }
-  checkCheckpoints() {
-    const c = this.playerCenter(), p = this.player;
-    for (const k of this.L.checkpoints) {
-      if (k.sec !== this.sec || Math.abs(c.x - k.x) > 40 || !p.onGround) continue;
-      if (this.checkpoint !== k) {
-        this.checkpoint = k;
-        if (!k.on) { k.on = true; this.sound.sfx('checkpoint'); this.burst(k.x, k.y - 30, 12, [0.75, 0.92, 0.97], { speed: 60, life: 0.8, up: 40 }); }
-        p.energy = 3;
-      }
-    }
-  }
-  checkDeath() {
-    if (this.player.pos.y > this.section().killY) this.director.run('reaparecer');
-  }
-  checkZone() {
-    const c = this.playerCenter();
-    const z = this.L.zones.find(z => z.sec === this.sec && c.x >= z.x0 && c.x < z.x1);
-    if (z && z !== this.zone) {
-      this.zone = z;
-      if (!this.seenZones.has(z.n)) { this.seenZones.add(z.n); this.zoneCard = { n: z.n, name: z.name, t: 0 }; }
-    }
-  }
-  updateSensor() {
-    const c = this.playerCenter();
-    let d = 1e9;
-    const consider = (x, y) => { const dd = Math.hypot(c.x - x, c.y - y); if (dd < d) d = dd; };
-    if (this.sec === 0) {
-      for (const p of this.L.pylons) if (!p.on) consider(p.x, p.y - 40);
-      if (!this.fx.crystalTaken) consider(this.L.spots.cristalRuina.x, -240);
-    }
-    let anchorD = 1e9;
-    for (const a of this.L.anchors) if (a.state === 'latente' && a.sec === this.sec) { const dd = Math.hypot(c.x - a.x, c.y - a.y); anchorD = Math.min(anchorD, dd); if (dd < d) d = dd; }
-    this.sensor = this.has.sensor ? Math.max(0, 1 - d / 520) : 0;
-    this.memNear = this.has.memoria && anchorD < 230;
-    // vibración audible de cristales cercanos
-    let hd = 1e9;
-    const sp = this.L.spots;
-    if (this.sec === 0) {
-      hd = Math.min(Math.hypot(c.x - sp.cristalCrater.x, c.y + 20), this.fx.crystalTaken ? 1e9 : Math.hypot(c.x - sp.cristalRuina.x, c.y - (-260)));
-    }
-    if (this.sec === 1 && this.ringsDone >= 3) hd = Math.hypot(c.x - sp.cristalMudo.x, c.y + 20);
-    this.crystalHum = Math.max(0, 1 - hd / 260) * (this.mode === 'juego' ? 1 : 0);
-  }
-
-  updateCamera(dt) {
-    const p = this.player, cam = this.cam, sec = this.section(), hw = this.view.w / 2, hh = this.view.h / 2, C = CONFIG;
-    const damp = (a, b, l) => a + (b - a) * (1 - Math.exp(-l * dt));
-    let tx, ty;
-    const feet = p.pos.y + p.h;
-    // Ancla vertical: la cámara no sigue cada salto; solo al pisar suelo o si DIP cae bajo el ancla
-    if (cam.anchor === undefined || p.onGround || feet > cam.anchor + C.camAnchorDrop || p.hidden) cam.anchor = feet;
-    if (cam.fix) { tx = cam.fix.x; ty = cam.fix.y; }
-    else {
-      // Look-ahead: mira hacia donde va DIP (y un poco más si corre)
-      cam.look = damp(cam.look, p.face * C.camLookAhead + p.vel.x * 0.18, C.camLookLambda);
-      tx = p.pos.x + p.w / 2 + cam.look;
-      ty = cam.anchor - 105 + (this.dialog && !this.touchUI ? 70 : 0);
-      tx = Math.max(sec.x0 + hw, Math.min(sec.x1 - hw, tx));
-      const y0 = sec.yMin + hh, y1 = sec.yMax - hh;
-      ty = y0 > y1 ? (y0 + y1) / 2 : Math.max(y0, Math.min(y1, ty));
-    }
-    if (cam.snap) { cam.x = tx; cam.y = ty; cam.snap = false; this.savePrev(); }
-    else if (cam.fix) { cam.x = damp(cam.x, tx, cam.speed); cam.y = damp(cam.y, ty, cam.speed * 0.8); }
-    else { cam.x = damp(cam.x, tx, C.camFollowX); cam.y = damp(cam.y, ty, C.camFollowY); }
-    cam.shake = Math.max(0, cam.shake - dt * C.shakeDecay);
-    // zona visual según la cámara (para el clima y la luz)
-    const zs = this.L.zones.find(z => cam.x >= z.x0 && cam.x < z.x1);
-    if (this.mode === 'titulo') this.envName = 'titulo';
-    else if (this.envOverride) this.envName = this.envOverride;
-    else if (zs) this.envName = zs.env;
-    // sombra: suelo bajo DIP
-    p.shadowY = groundBelow(p.pos.x + p.w / 2, p.pos.y + p.h, this.solids);
-  }
-  updateFade(dt) {
-    const f = this.fade;
-    if (f.a < f.target) f.a = Math.min(f.target, f.a + dt * f.speed); else if (f.a > f.target) f.a = Math.max(f.target, f.a - dt * f.speed);
-  }
-  dustColor() { const e = this.envName; return ['santuario', 'estacion', 'huida', 'alarma'].includes(e) ? [0.55, 0.75, 0.85] : [0.93, 0.91, 0.86]; }
   updateTimers(dt) {
+    for (const k of ['bubble', 'guiaTip', 'toast']) { const o = this[k]; if (o) { o.t += dt; if (o.t > o.dur) this[k] = null; } }
+    if (this.sectionCard) { this.sectionCard.t += dt; if (this.sectionCard.t > 3.2) this.sectionCard = null; }
     this.hurtFlash = Math.max(0, this.hurtFlash - dt * 2.5);
-    if (this.toast) { this.toast.t += dt; if (this.toast.t > this.toast.dur) this.toast = null; }
-    if (this.hint) { this.hint.t += dt; if (this.hint.t > this.hint.dur) this.hint = null; }
-    if (this.zoneCard) { this.zoneCard.t += dt; if (this.zoneCard.t > 4.5) this.zoneCard = null; }
-    if (this.vision) this.vision.t += dt;
-    const lbT = this.director.blocking && this.mode === 'juego' ? 1 : 0;
-    this.letterbox += (lbT - this.letterbox) * Math.min(1, dt * 4);
+    this.fx.flash = Math.max(0, this.fx.flash - dt * 2);
+    const lb = this.director.blocking && this.mode === 'juego' ? 1 : 0;
+    this.letterbox += (lb - this.letterbox) * (1 - Math.exp(-dt * 6));
   }
   updateAmbient(dt) {
-    const e = this.envName;
-    const wind = e === 'crater' || e === 'llanura' ? 1 : e === 'velo' ? 0.8 : e === 'titulo' ? 0.6 : e === 'final' ? 0.7 : 0.15;
-    const drone = (this.flags.introMetal ? 1 : 0) + (e === 'estacion' ? 0.5 : 0) + (e === 'huida' ? 0.8 : 0) + (e === 'santuario' ? 0.25 : 0);
-    this.sound.update(dt, { wind, drone, hum: this.crystalHum || 0, alarm: this.alarm, music: this.music, musicVar: this.musicVar });
-    if (this.flags.introMetal && Math.random() < dt * 3) this.sound.sfx('metal');
+    const music = this.mode === 'titulo' ? 'titulo' : this.mode === 'fin' ? 'fin' : this.musicOverride || (this.boss.active ? 'jefe' : this.chase.on ? 'persecucion' : 'nivel');
+    this.sound.update(dt, { music, fast: this.superT > 0, chase: this.chase.on ? 1 : 0 });
+  }
+
+  // ---------- final del nivel ----------
+  finishLevel() {
+    this.timerOn = false;
+    const t = this.runTime, s = this.save;
+    const medal = !this.trial ? null : t <= MEDALS.oro ? 'oro' : t <= MEDALS.plata ? 'plata' : t <= MEDALS.bronce ? 'bronce' : null;
+    const allCrates = this.cratesBroken >= this.cratesTotal;
+    s.done = true; s.seeds = s.seeds || {};
+    if (allCrates) s.seeds.cajas = true;
+    if (medal === 'oro') s.seeds.oro = true;
+    if (this.trial && (!s.best || t < s.best)) s.best = t;
+    s.pages = Array.from(new Set([...(s.pages || []), ...this.L.pages.filter(p => p.got).map(p => p.id)]));
+    this.writeSave();
+    this.result = { t, medal, allCrates, crates: this.cratesBroken, total: this.cratesTotal, frags: this.fragsGot, pages: this.L.pages.filter(p => p.got).length, deaths: this.deaths, seeds: Object.keys(s.seeds).length, best: s.best };
+    this.mode = 'fin'; this.endT = 0;
+  }
+  showTip(t) {
+    if (t.who === 'guia') { const T = this.tipsText?.[t.text]; if (T) this.tip(this.touchUI ? T.t : T.k); }
   }
 }
-
-export { STATE };
+export { STATE, MEDALS };

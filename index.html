@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<title>DIP · Nivel 1: Nácar</title>
-<meta name="description" content="DIP: El último recuerdo del universo. Nivel 1: Nácar, el planeta de la caída. Acción y exploración arcade en 2.5D.">
-<meta name="theme-color" content="#16171c">
+<title>DIP · El Sueño Infinito</title>
+<meta name="description" content="DIP: El Sueño Infinito. Plataformas 3D en corredor. Nivel 1: Sector Demolición.">
+<meta name="theme-color" content="#05070d">
 <style>
-  :root { --tinta: #3d4350; --hielo: #7fd0ec; --papel: #f4efe4; --oscuro: #16171c; }
+  :root { --tinta: #0b1020; --hielo: #7fd0ff; --papel: #f4f1ff; --oscuro: #05070d; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; background: var(--oscuro); overflow: hidden; overscroll-behavior: none; }
   body { font-family: "Courier New", ui-monospace, Menlo, monospace; color: var(--papel); -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
@@ -24,7 +24,7 @@
   #tactil .grupo { display: flex; gap: 14px; align-items: flex-end; }
   #tactil button { font: bold 15px "Courier New", monospace; color: var(--tinta); border: 2px solid rgba(61,67,80,.6); border-radius: 50%;
     touch-action: none; display: grid; place-items: center; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); box-shadow: 0 4px 14px rgba(0,0,0,.18); }
-  #tactil button[data-btn="act"] { width: 68px; height: 68px; background: rgba(191,234,247,.78); font-size: 26px; margin-bottom: 34px; }
+  #tactil button[data-btn="spin"] { width: 70px; height: 70px; background: rgba(191,234,247,.8); font-size: 14px; margin-bottom: 34px; }
   #tactil button[data-btn="jump"] { width: 88px; height: 88px; background: rgba(61,67,80,.78); color: var(--papel); }
   #tactil button.on { transform: scale(.92); filter: brightness(1.15); }
   #stick { position: absolute; left: 0; top: 70px; bottom: 0; width: 50%; display: none; z-index: 2; touch-action: none; }
@@ -44,7 +44,7 @@
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
 </head>
 <body>
-<main id="juego" aria-label="DIP · Nivel 1: Nácar">
+<main id="juego" aria-label="DIP · El Sueño Infinito">
   <canvas id="mundo"></canvas>
   <canvas id="hud"></canvas>
   <div id="carga" role="status">
@@ -55,7 +55,7 @@
   <div id="stick" aria-label="Joystick: desliza para moverte"><div id="stick-base"><div id="stick-knob"></div></div></div>
   <div id="tactil">
     <div class="grupo">
-      <button data-btn="act" aria-label="Acción y recuerdo">✦</button>
+      <button data-btn="spin" aria-label="Girar">Girar</button>
       <button data-btn="jump" aria-label="Saltar">Saltar</button>
     </div>
   </div>

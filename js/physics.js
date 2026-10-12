@@ -1,53 +1,58 @@
-// physics.js — Físicas con vectores (pos, vel) + colisiones AABB resueltas por ejes separados.
-// Unidades: píxeles del sprite (DIP mide 86 px) y segundos. El eje y crece hacia abajo.
-export const GRAVITY = 1500;       // px/s²
-export const MAX_FALL_SPEED = 900; // px/s
-export const JUMP_SPEED = 600;     // px/s  → salto de ~120 px
-export const JUMP_CUT = 220;       // soltar el salto antes corta la subida
-export const WALK_SPEED = 120;     // px/s
-export const RUN_SPEED = 220;      // px/s
-export const PUSH_SPEED = 60;      // px/s
-export const GROUND_ACCEL = 1300;  // px/s²
-export const AIR_ACCEL = 900;      // px/s²
-
-// a: entidad { pos:{x,y}, w, h } · b: sólido { x, y, w, h }
-export const aabb = (a, b) => a.pos.x < b.x + b.w && a.pos.x + a.w > b.x && a.pos.y < b.y + b.h && a.pos.y + a.h > b.y;
-export const overlapRect = (ax, ay, aw, ah, b) => ax < b.x + b.w && ax + aw > b.x && ay < b.y + b.h && ay + ah > b.y;
+// physics.js — Colisiones AABB 3D propias, resueltas por ejes (X, Z y luego Y).
+// Un sólido es { x0, x1, y0, y1, z0, z1, active }. Una entidad tiene pos (pies, al centro), vel, hw, hd, h.
+const EPS = 1e-4;
 const on = (s) => s.active !== false;
 
-// Mueve la entidad y la saca de los sólidos: primero X, luego Y.
-// e.self: sólido propio que se ignora (rocas empujables). Devuelve el sólido contra el que chocó en X.
-export function moveAndCollide(e, solids, dt) {
-  e.hitWall = 0; e.wallRef = null;
-  e.pos.x += e.vel.x * dt;
-  for (const s of solids) {
-    if (!on(s) || s.oneWay || s === e.self || !aabb(e, s)) continue;
-    const dir = e.vel.x !== 0 ? Math.sign(e.vel.x) : (e.pos.x + e.w / 2 < s.x + s.w / 2 ? 1 : -1);
-    if (dir > 0) e.pos.x = s.x - e.w; else e.pos.x = s.x + s.w;
-    e.hitWall = dir; e.wallRef = s; e.vel.x = 0;
-  }
-  const prevBottom = e.pos.y + e.h;
+export function overlaps(e, s, px = e.pos.x, py = e.pos.y, pz = e.pos.z) {
+  return px - e.hw < s.x1 - EPS && px + e.hw > s.x0 + EPS &&
+         pz - e.hd < s.z1 - EPS && pz + e.hd > s.z0 + EPS &&
+         py < s.y1 - EPS && py + e.h > s.y0 + EPS;
+}
+export const boxHit = (ax0, ax1, ay0, ay1, az0, az1, s) => ax0 < s.x1 && ax1 > s.x0 && ay0 < s.y1 && ay1 > s.y0 && az0 < s.z1 && az1 > s.z0;
+
+// stepHeight: escalones bajos se suben solos estando en el suelo.
+export function moveAndCollide(e, solids, dt, stepHeight = 0) {
+  e.hitWall = null;
+  const horiz = (axis) => {
+    const v = axis === 'x' ? e.vel.x : e.vel.z;
+    if (v === 0) return;
+    e.pos[axis] += v * dt;
+    for (const s of solids) {
+      if (!on(s) || s.oneWay || s === e.self || !overlaps(e, s)) continue;
+      // escalón: si el borde superior está a poca altura y estamos en el suelo, subirlo
+      if (e.onGround && s.y1 - e.pos.y <= stepHeight && !solids.some(o => o !== s && on(o) && !o.oneWay && overlaps(e, o, e.pos.x, s.y1 + 0.01, e.pos.z))) {
+        e.pos.y = s.y1; continue;
+      }
+      if (axis === 'x') e.pos.x = v > 0 ? s.x0 - e.hw : s.x1 + e.hw;
+      else e.pos.z = v > 0 ? s.z0 - e.hd : s.z1 + e.hd;
+      if (axis === 'x') e.vel.x = 0; else e.vel.z = 0;
+      e.hitWall = s;
+    }
+  };
+  horiz('x'); horiz('z');
+  const prevY = e.pos.y;
   e.pos.y += e.vel.y * dt;
-  e.onGround = false; e.ground = null;
+  e.onGround = false; e.ground = null; e.ceiling = null;
   for (const s of solids) {
     if (!on(s) || s === e.self) continue;
     if (s.oneWay) {
-      if (e.vel.y >= 0 && prevBottom <= s.y + 1 && aabb(e, s)) { e.pos.y = s.y - e.h; e.vel.y = 0; e.onGround = true; e.ground = s; }
+      if (e.vel.y <= 0 && prevY >= s.y1 - 0.02 && overlaps(e, s)) { e.pos.y = s.y1; e.vel.y = 0; e.onGround = true; e.ground = s; }
       continue;
     }
-    if (!aabb(e, s)) continue;
-    if (e.vel.y > 0 || prevBottom <= s.y + 1) { e.pos.y = s.y - e.h; e.onGround = true; e.ground = s; }
-    else e.pos.y = s.y + s.h;
+    if (!overlaps(e, s)) continue;
+    if (e.vel.y <= 0 && prevY >= s.y1 - 0.05) { e.pos.y = s.y1; e.onGround = true; e.ground = s; e.landVel = e.vel.y; }
+    else if (e.vel.y > 0) { e.pos.y = s.y0 - e.h; e.ceiling = s; }
+    else { e.pos.y = s.y1; e.onGround = true; e.ground = s; }
     e.vel.y = 0;
   }
 }
 
-// Altura del suelo justo debajo de un punto (para la sombra). Devuelve null si no hay.
-export function groundBelow(x, y, solids, maxDist = 600) {
-  let best = null;
+// Altura del suelo justo debajo de un punto (para la sombra que siempre marca dónde vas a caer).
+export function groundBelow(x, y, z, solids, r = 0.2) {
+  let best = -Infinity;
   for (const s of solids) {
-    if (!on(s) || x < s.x || x > s.x + s.w || s.y < y - 2 || s.y > y + maxDist) continue;
-    if (best === null || s.y < best) best = s.y;
+    if (!on(s) || s.noShadow || x + r < s.x0 || x - r > s.x1 || z + r < s.z0 || z - r > s.z1 || s.y1 > y + 0.05) continue;
+    if (s.y1 > best) best = s.y1;
   }
-  return best;
+  return best === -Infinity ? null : best;
 }

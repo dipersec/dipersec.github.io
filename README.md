@@ -1,49 +1,54 @@
-# DIP · Nivel 1: Nácar
+# DIP · El Sueño Infinito — Nivel 1: Sector Demolición
 
-*El último recuerdo del universo* — acción y exploración arcade en 2.5D. Es la versión compacta del nivel completo: las 5 zonas y las 9 escenas del documento de diseño, de principio a fin.
+Plataformas 3D de acción en un corredor con cámara detrás. DIP es un salvapantallas que se quedó dormido en el sofá. Su sector va a ser formateado para construir el Servidor de Anuncios Intergaláctico, y él tiene que correr.
 
 ## Jugar
-Abre `index.html` desde un servidor (GitHub Pages o `python3 -m http.server`). three.js se carga desde jsdelivr (`three@0.160.0`). Todo lo demás se genera por código: los sprites, el mundo y el sonido.
+Abre `index.html` desde un servidor (GitHub Pages o `python3 -m http.server`). three.js (`three@0.160.0`) se carga desde jsdelivr. Todo lo demás se genera por código: el sprite, el mundo, las texturas y el sonido.
 
-| Acción | Teclado | Táctil |
-|---|---|---|
-| Caminar / correr | ← → o A D · Shift | joystick: pulgar en la mitad izquierda (a fondo corre) |
-| Saltar (mantén para llegar más alto) | Espacio o ↑ | Saltar |
-| Examinar, hablar, proyectar el recuerdo | E | ✦ |
-| Avanzar diálogo | Espacio, E o Enter | tocar la pantalla |
-| Pausa / sonido / reiniciar | Esc · M · R (en pausa) | II |
+| Acción | Teclado | Táctil | Mando |
+|---|---|---|---|
+| Moverse | WASD o flechas | joystick (pulgar en la mitad izquierda) | stick o cruceta |
+| Saltar (mantener = más alto) | Espacio, K o Z | Saltar | A |
+| Giro de compilación | X, J, Shift o E | Girar | X / B |
+| Pausa · sonido · reiniciar | Esc o P · M · R | II | Start |
 
-También funciona con mando (stick o cruceta, A saltar, X/B acción, Start pausa, gatillo para correr).
-
-**Afinado en vivo:** tecla `` ` `` o `?debug` en la URL abre un panel con todos los valores de `js/config.js` (salto, movimiento, cámara, juice) y la medición de fps y draw calls.
-
-**Pruebas de juego:** `index.html?zona=N` (N = 1 a 6) empieza en esa zona con todo lo anterior resuelto. Sirve para revisar los criterios del documento (orientación, diversión, ritmo, claridad e intriga) sin rejugar todo.
+**URLs de prueba**
+- `?seccion=1..4` empieza en una sección: calles, tejados, persecución o jefe.
+- `?contrarreloj` activa el modo contrarreloj (sin escenas).
+- `?debug` (o la tecla `` ` ``) abre el panel lil-gui con todos los valores de `js/config.js` y mide fps, draw calls, triángulos y alcance del salto.
 
 ## Recorrido
-1. **Cráter del impacto.** Intro de la caída, la pantalla de la cápsula y los controles básicos. Secreto: la huella en la pared vertical.
-2. **Camino de huellas y jardín de Tilo.** Las huellas repetidas, la huella que aparece al saltar, Tilo, las rocas que se empujan, la palanca y el sensor. Secreto: el jardín anterior (en lo alto, sobre la carpa).
-3. **Ruinas incompletas.** Velo mineral, placas inestables, el cristal, el **primer recuerdo**, el puente imposible, la escalera que termina en el aire, el centinela dormido (con ruta por arriba) y las 3 estructuras que abren la puerta.
-4. **Santuario del eco.** Plataformas temporales y los 3 anillos que se completan con el recuerdo. Luego la visión de las ruinas completas y el ascensor. Secreto: el cristal silencioso.
-5. **Estación de llegada.** Una puerta que se abre antes de tiempo y otra que se cierra (se pasa por arriba), el registro de la cápsula, la cápsula de energía y Lunex. Secreto: la lista de llegadas.
-6. **Huida.** Puertas que cambian de lugar, plataformas que aparecen y desaparecen y un puente que hay que recordar. Al salir, Tilo, la señal hacia el cielo y **VÉRTICE**.
+1. **Calles del sector.** Arranca en el sofá con el dron, el aviso de demolición y la Guía. Se aprenden el salto, el giro, las cajas y los bichos. Hay un callejón lateral con secreto.
+2. **Tejados.** Saltos medidos al 60–85 % del alcance, plataformas que caen, TNT, cajas de rebote y de cristal.
+3. **Persecución del vacío.** La cámara gira y mira a DIP de frente, y el vacío borra la calle detrás de él. Hay huecos, formateadoras (siempre queda un carril libre) y una página en un bolsillo arriesgado.
+4. **Jefe: Inspector de Trámites.** Tiene 7 golpes en tres fases: devolver sellos con el giro, subir por las carpetas y pisarle la cabeza, y hacer que sus propias formateadoras lo borren. El cierre es el autostop en un paquete de datos.
 
-## Arquitectura (skill `juegos`)
+**Coleccionables:** fragmentos (100 dan una vida), cajas rotas, 4 páginas de la Guía y Copias de Seguridad (absorben un golpe; con 3 seguidas, 8 s de invulnerabilidad). Al final se dan medallas por tiempo (oro 150 s, plata 190 s, bronce 240 s). El progreso se guarda en `localStorage` (`dip-suenio`).
+
+**Ayuda dinámica:** tras 5 muertes en el mismo tramo se regala una Copia, y tras 10 aparece un punto de control extra. Volver a tener el control después de morir toma unos 1 s, y cada muerte tiene un comentario distinto.
+
+## Arquitectura (skills `juegos` + `pulir-plataformas-3d`)
 ```
-index.html      canvas del mundo + canvas del HUD + botones táctiles
-js/main.js      precarga (sprites) y bucle requestAnimationFrame con dt limitado
-js/game.js      estado + update(): mecánicas, cámara, triggers (sin dibujo)
-js/player.js    máquina de estados de DIP (reposo, correr, saltar, caer, aterrizar, empujar, recordar, daño)
-js/physics.js   vectores pos/vel, gravedad, AABB resuelto por ejes (X y luego Y)
-js/level.js     el nivel como datos: sólidos, anclas del recuerdo, placas, centinelas, puertas…
-js/story.js     las 9 escenas como guiones (generadores) + interacciones y secretos
-js/world.js     render three.js: diorama low-poly, luz y sombras, paralaje real, clima por zona
-js/hud.js       HUD, diálogos, visiones y pantallas (canvas 2D)
-js/sprites.js   SpriteSheet + generación del pixel art (DIP 48×86, Tilo 40×60)
-js/textures.js  texturas procedurales HD (costra, roca, piedra, metal, glifos, anillos)
-js/config.js    CONFIG: todos los valores de game feel (salto por altura y tiempo, coyote, buffer, cámara, juice)
-js/debug.js     panel lil-gui para afinar en vivo
-js/pool.js      object pool (partículas, pulsos de los centinelas)
-js/audio.js     Web Audio sintetizado: viento, pasos, cristales, voces y música por zona
+index.html      canvas + HUD + joystick y botones táctiles + aviso de girar el celular
+js/main.js      precarga y bucle de paso fijo (60 Hz) con interpolación del render
+js/config.js    CONFIG: salto por altura y tiempo, coyote, buffer, corte, cámara, juice
+js/physics.js   AABB 3D por ejes (X, Z, Y), escalones y plataformas de un solo sentido
+js/player.js    máquina de estados de DIP + capa del giro
+js/input.js     teclado, joystick analógico, botones y mando (zona muerta 0.15)
+js/level1.js    el nivel como datos: sólidos, cajas, enemigos, páginas, controles, tips
+js/game.js      mecánicas, cajas/TNT, persecución, cámara, muertes, medallas
+js/boss.js      Inspector de Trámites (3 fases)
+js/story.js     escenas como guiones (generadores), ninguna dura más de 30 s
+js/world.js     render HD three.js: geometría fusionada, instancing, sombras, cielo nocturno
+js/hud.js       HUD, globos, diálogos, pausa y pantallas
+js/textures.js  texturas procedurales (asfalto, fachadas, cajas, pantallas de salvapantallas)
+js/audio.js     Web Audio sintetizado con buses (música, sfx, ui) y escalera de tonos
+js/sprites.js   sprite SNES de DIP (48 px) sin cambios de diseño
+js/debug.js     panel lil-gui
+js/pool.js      object pools (partículas, esquirlas, disparos)
 ```
-- El sprite de DIP es el SNES de 48 px sin cambios de diseño, generado con el mismo SVG y la misma paleta. Se agregaron dos filas con el mismo dibujo: empujar y daño.
-- Solo DIP y Tilo son pixel art. El mundo se renderiza en HD: antialiasing, materiales PBR con reflejos del cielo, texturas procedurales, sombras suaves y resolución adaptativa (baja sola si el equipo no llega a ~40 fps).
+- Solo DIP es pixel art. Es un billboard cilíndrico con filtro nearest y squash & stretch. El mundo se renderiza en HD con tone mapping ACES, sombras suaves, mapa de entorno y resolución adaptativa.
+- Rendimiento: de 451 draw calls se bajó a 30–162 según la sección, gracias a la geometría estática fusionada por material y al instancing.
+- Los nombres e íconos son propios. No se usa nada de Star Wars, la Guía del autoestopista ni Tron.
+
+Pendiente: Modo Espejo, final verdadero y niveles 2–5.

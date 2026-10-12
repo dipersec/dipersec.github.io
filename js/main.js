@@ -1,5 +1,5 @@
 // main.js — Precarga, arranque y bucle con requestAnimationFrame.
-import { buildDipSheet, buildTiloSheet } from './sprites.js';
+import { buildDipSheet } from './sprites.js';
 import { Sound } from './audio.js';
 import { Input } from './input.js';
 import { Game } from './game.js';
@@ -13,19 +13,15 @@ const bar = $('#carga-barra'), label = $('#carga-texto');
 
 // Precarga: los sprites se generan por código (SVG → pixel art) antes del primer update().
 async function preload() {
-  const steps = [['dip', buildDipSheet], ['tilo', buildTiloSheet]];
-  const out = {};
-  for (let i = 0; i < steps.length; i++) {
-    label.textContent = i === 0 ? 'Rasterizando a DIP…' : 'Despertando a Tilo…';
-    out[steps[i][0]] = await steps[i][1]();
-    bar.style.width = `${((i + 1) / (steps.length + 1)) * 100}%`;
-  }
-  return out;
+  label.textContent = 'Rasterizando a DIP…';
+  const dip = await buildDipSheet();
+  bar.style.width = '50%';
+  return { dip };
 }
 
 async function boot() {
   const assets = await preload();
-  label.textContent = 'Construyendo Nácar…';
+  label.textContent = 'Encendiendo el Sector Demolición…';
   await new Promise(r => requestAnimationFrame(r));
   const sound = new Sound();
   const input = new Input();
@@ -36,8 +32,9 @@ async function boot() {
   const hud = new Hud($('#hud'), game, world, assets);
   window.__dip = game; window.__world = world;
   setupDebug(game, world);
-  const zona = Number(new URLSearchParams(location.search).get('zona'));
-  if (zona >= 1 && zona <= 6) game.skipTo(zona);
+  const q = new URLSearchParams(location.search), sec = Number(q.get('seccion'));
+  if (sec >= 1 && sec <= 4) game.skipTo(sec);
+  else if (q.has('contrarreloj') && game.save.done) game.start(true);
 
   const resize = () => {
     const r = $('#juego').getBoundingClientRect();
