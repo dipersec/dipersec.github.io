@@ -32,8 +32,8 @@ export class Input {
       const down = (e) => {
         e.preventDefault(); b.setPointerCapture?.(e.pointerId); b.classList.add('on');
         this.touch[name] = true; this.pressed.any = true;
-        if (name === 'jump') { this.pressed.jump = true; this.pressed.confirm = true; }
-        if (name === 'spin') { this.pressed.spin = true; this.pressed.confirm = true; }
+        if (name === 'jump') { this.pressed.jump = true; this.pressed.confirm = true; navigator.vibrate?.(8); }
+        if (name === 'spin') { this.pressed.spin = true; this.pressed.confirm = true; navigator.vibrate?.(8); }
         if (name === 'recordar') this.pressed.recordar = true;
         if (name === 'pause') this.pressed.pause = true;
       };

@@ -76,11 +76,15 @@ export class Hud {
   drawTitle(W, H) {
     const c = this.ctx, g = this.g, t = g.time;
     const grd = c.createLinearGradient(0, 0, 0, H); grd.addColorStop(0, 'rgba(30,20,60,.55)'); grd.addColorStop(0.55, 'rgba(30,20,60,.1)'); grd.addColorStop(1, 'rgba(30,20,60,.6)'); c.fillStyle = grd; c.fillRect(0, 0, W, H);
-    this.font(82, '900'); this.text('DIP', W / 2, 108, C.paper, 'center');
+    const ancho = W - 24;   // en vertical el ancho virtual es muy angosto: todo texto se ajusta o se parte en líneas
+    this.font(82, '900'); const dipPx = Math.min(82, Math.floor(82 * ancho / Math.max(c.measureText('DIP').width, 1))); this.font(dipPx, '900'); this.text('DIP', W / 2, 108, C.paper, 'center');
     const iri = c.createLinearGradient(W / 2 - 150, 0, W / 2 + 150, 0);
     iri.addColorStop(0, '#ffc8ee'); iri.addColorStop(0.5 + Math.sin(t) * 0.2, '#c8f0ff'); iri.addColorStop(1, '#d8c8ff');
-    this.font(16, 'bold'); c.textAlign = 'center'; c.fillStyle = 'rgba(20,10,30,.5)'; c.fillText('EL ÚLTIMO RECUERDO DEL UNIVERSO', W / 2 + 1, 134.5); c.fillStyle = iri; c.fillText('EL ÚLTIMO RECUERDO DEL UNIVERSO', W / 2, 133);
-    this.font(11, 'normal'); this.text('Mundo 1 · Nácar, el planeta de la caída', W / 2, 154, '#efe6ff', 'center');
+    this.font(16, 'bold'); c.textAlign = 'center';
+    const sub = this.wrap('EL ÚLTIMO RECUERDO DEL UNIVERSO', ancho, 16, 'bold');
+    sub.forEach((ln, i) => { c.fillStyle = 'rgba(20,10,30,.5)'; c.fillText(ln, W / 2 + 1, 134.5 + i * 19); c.fillStyle = iri; c.fillText(ln, W / 2, 133 + i * 19); });
+    this.font(11, 'normal');
+    this.wrap('Mundo 1 · Nácar, el planeta de la caída', ancho, 11, 'normal').forEach((ln, i) => this.text(ln, W / 2, 154 + (sub.length - 1) * 19 + i * 14, '#efe6ff', 'center'));
     if (!IS_TOUCH) {
       this.font(10, 'normal');
       this.text('Flechas o WASD: moverte · Espacio: saltar · X: girar · C: recordar · Esc: pausa', W / 2, 336, '#efe6ff', 'center');
