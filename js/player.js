@@ -13,13 +13,13 @@ export function createPlayer(x, y, z) {
     pos: { x, y, z }, vel: { x: 0, y: 0, z: 0 }, hw: 0.32, hd: 0.32, h: 1.55,
     state: STATE.IDLE, stateTime: 0, anim: 'idle', animTime: 0, face: 1,
     onGround: true, ground: null, coyote: 0, jumpBuffer: 0, cut: false,
-    spin: 0, spinCd: 0, sq: 1, invuln: 0, hidden: false, poseAnim: 'idle', landVel: 0
+    spin: 0, spinCd: 0, proj: 0, sq: 1, invuln: 0, hidden: false, poseAnim: 'idle', landVel: 0
   };
 }
 export function setState(p, s) { if (p.state !== s) { p.state = s; p.stateTime = 0; } }
 
 function animFor(p) {
-  if (p.spin > 0) return 'project';
+  if (p.spin > 0 || p.proj > 0) return 'project';
   switch (p.state) {
     case STATE.RUNNING: return Math.hypot(p.vel.x, p.vel.z) > 4.5 ? 'run' : 'walk';
     case STATE.JUMPING: return 'rise';
@@ -38,6 +38,7 @@ export function updatePlayer(p, wish, input, solids, dt, hooks) {
   p.invuln = Math.max(0, p.invuln - dt);
   p.spin = Math.max(0, p.spin - dt);
   p.spinCd = Math.max(0, p.spinCd - dt);
+  p.proj = Math.max(0, p.proj - dt);
   p.jumpBuffer = input.jumpPressed ? CONFIG.buffer : Math.max(0, p.jumpBuffer - dt);
   p.coyote = p.onGround ? CONFIG.coyote : Math.max(0, p.coyote - dt);
   const locked = p.state === STATE.DEAD || p.state === STATE.POSE || (p.state === STATE.HURT && p.stateTime < 0.25);

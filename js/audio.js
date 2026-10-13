@@ -1,15 +1,15 @@
 // audio.js — Sonido sintetizado con Web Audio (original, sin archivos). Buses separados: música, efectos e interfaz.
-// Los efectos repetidos varían su tono ±7 % y los fragmentos suben un semitono por recogida seguida.
+// Los efectos repetidos varían su tono ±7 % y las partículas suben un semitono por recogida seguida.
 const NOTE = (n) => 440 * Math.pow(2, (n - 69) / 12);
 
 export class Sound {
-  constructor() { this.ctx = null; this.muted = false; this.music = 'silencio'; this.nextNote = 0; this.step = 0; this.musicFast = false; }
+  constructor() { this.ctx = null; this.muted = false; this.vol = 0.8; this.music = 'silencio'; this.nextNote = 0; this.step = 0; this.musicFast = false; }
 
   init() {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     const ctx = this.ctx = new AC();
-    this.master = ctx.createGain(); this.master.gain.value = 0.8;
+    this.master = ctx.createGain(); this.master.gain.value = this.muted ? 0 : this.vol;
     const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 4;
     this.master.connect(comp); comp.connect(ctx.destination);
     this.sfxBus = ctx.createGain(); this.sfxBus.gain.value = 0.85; this.sfxBus.connect(this.master);
@@ -22,12 +22,13 @@ export class Sound {
     const len = ctx.sampleRate * 2, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     this.noise = buf;
-    // ambiente: zumbido de la ciudad y rumor del vacío en la persecución
-    this.hum = this.loopNoise('lowpass', 220, 0.03);
+    // ambiente: viento del desierto mineral y rumor de la reconfiguración en la huida
+    this.hum = this.loopNoise('bandpass', 380, 0.03);
     this.voidRumble = this.loopNoise('lowpass', 90, 0);
   }
   resume() { if (this.ctx && this.ctx.state !== 'running') this.ctx.resume(); }
-  toggleMute() { this.muted = !this.muted; if (this.master) this.master.gain.setTargetAtTime(this.muted ? 0 : 0.8, this.ctx.currentTime, 0.05); }
+  toggleMute() { this.muted = !this.muted; if (this.master) this.master.gain.setTargetAtTime(this.muted ? 0 : this.vol, this.ctx.currentTime, 0.05); }
+  setVolume(v) { this.vol = 0.8 * v; if (this.master) this.master.gain.setTargetAtTime(this.muted ? 0 : this.vol, this.ctx.currentTime, 0.05); }
   loopNoise(type, freq, gain) {
     const ctx = this.ctx, src = ctx.createBufferSource(); src.buffer = this.noise; src.loop = true;
     const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq;
@@ -88,6 +89,48 @@ export class Sound {
       case 'aturdido': [880, 740, 880, 740].forEach((f, i) => this.tone(f, 0.12, { type: 'triangle', vol: 0.05, at: i * 0.1 })); break;
       case 'burbuja': this.tone(700 * v, 0.12, { vol: 0.05, slide: 1.8 }); break;
       case 'vacio': this.burst(1.2, { type: 'lowpass', freq: 200, slide: 0.5, vol: 0.4 }); break;
+      case 'tip': this.tone(1040, 0.06, { type: 'sine', vol: 0.04, bus: this.uiBus }); this.tone(1560, 0.08, { type: 'sine', vol: 0.035, at: 0.06, bus: this.uiBus }); break;
+      case 'seccion': [523, 784, 1046].forEach((f, i) => this.tone(f, 0.5, { type: 'sine', vol: 0.05, at: i * 0.1, echo: true, bus: this.uiBus })); break;
+      case 'cri': this.tone(2200 * v, 0.05, { type: 'square', vol: 0.03, slide: 1.4 }); break;
+      case 'robo': [1400, 1800, 1200].forEach((f, i) => this.tone(f * v, 0.06, { type: 'square', vol: 0.04, at: i * 0.05 })); break;
+      case 'pieza': [784, 1046, 1318].forEach((f, i) => this.tone(f, 0.22, { type: 'triangle', vol: 0.07, at: i * 0.06 })); this.burst(0.08, { type: 'highpass', freq: 5000, vol: 0.1 }); break;
+      case 'pieza_suelta': this.tone(600, 0.2, { type: 'triangle', vol: 0.06, slide: 1.6 }); break;
+      case 'clang': this.tone(820 * v, 0.25, { type: 'square', vol: 0.05, slide: 0.98 }); this.tone(1230 * v, 0.2, { type: 'triangle', vol: 0.04 }); break;
+      case 'alerta': this.tone(1320, 0.08, { type: 'square', vol: 0.06 }); this.tone(1760, 0.1, { type: 'square', vol: 0.06, at: 0.1 }); break;
+      case 'embestida': this.burst(0.4, { type: 'bandpass', freq: 600, q: 1, slide: 3, vol: 0.3 }); break;
+      case 'picada': this.tone(900, 0.5, { type: 'sawtooth', vol: 0.04, slide: 0.3 }); break;
+      case 'golpe_suelo': this.burst(0.2, { type: 'lowpass', freq: 400, vol: 0.35 }); this.tone(80, 0.2, { vol: 0.15, slide: 0.6 }); break;
+      case 'centinela_cae': this.burst(0.35, { type: 'lowpass', freq: 900, vol: 0.35 }); [440, 330, 220].forEach((f, i) => this.tone(f, 0.15, { type: 'square', vol: 0.04, at: i * 0.07 })); break;
+      case 'onda': this.tone(110, 0.6, { type: 'sine', vol: 0.18, slide: 0.5 }); this.tone(660, 0.5, { type: 'sine', vol: 0.04, slide: 1.5, echo: true }); break;
+      case 'eco': [392, 466, 523].forEach((f, i) => this.tone(f, 0.6, { type: 'sine', vol: 0.04, at: i * 0.12, echo: true })); break;
+      case 'eco_fin': this.tone(523, 0.4, { type: 'sine', vol: 0.03, slide: 0.5, echo: true }); break;
+      case 'puerta': this.burst(0.25, { type: 'bandpass', freq: 500, q: 2, vol: 0.18, slide: 1.6 }); break;
+      case 'puerta_aviso': this.tone(980, 0.06, { type: 'square', vol: 0.03 }); this.tone(980, 0.06, { type: 'square', vol: 0.03, at: 0.12 }); break;
+      case 'temporal': this.tone(700, 0.15, { type: 'sine', vol: 0.03, slide: 0.5 }); break;
+      case 'recordar': [523, 659, 784, 1046, 1318].forEach((f, i) => this.tone(f, 0.5, { type: 'sine', vol: 0.06, at: i * 0.04, echo: true })); this.burst(0.5, { type: 'highpass', freq: 6000, vol: 0.06, slide: 0.5 }); break;
+      case 'recordar_grande': [392, 523, 659, 784, 1046, 1318, 1568].forEach((f, i) => this.tone(f, 0.9, { type: 'sine', vol: 0.06, at: i * 0.05, echo: true })); this.tone(98, 1.2, { type: 'triangle', vol: 0.12 }); break;
+      case 'recordar_vacio': this.tone(330, 0.15, { type: 'sine', vol: 0.04, slide: 0.8, bus: this.uiBus }); break;
+      case 'memoria_tic': this.tone(1568, 0.05, { type: 'sine', vol: 0.04, bus: this.uiBus }); break;
+      case 'memoria_fin': this.tone(784, 0.5, { type: 'sine', vol: 0.05, slide: 0.5, echo: true }); break;
+      case 'concha': [659, 831, 988, 1318].forEach((f, i) => this.tone(f, 0.3, { type: 'triangle', vol: 0.07, at: i * 0.05, echo: true })); break;
+      case 'concha_rompe': this.burst(0.25, { type: 'highpass', freq: 3000, vol: 0.25 }); this.tone(500, 0.3, { type: 'triangle', vol: 0.07, slide: 0.4 }); break;
+      case 'registro': [659, 784, 988, 1319].forEach((f, i) => this.tone(f, 0.4, { vol: 0.07, at: i * 0.09, echo: true, bus: this.uiBus })); break;
+      case 'capsula': [880, 0, 880, 1175].forEach((f, i) => f && this.tone(f, 0.08, { type: 'square', vol: 0.04, at: i * 0.09, bus: this.uiBus })); break;
+      case 'tilo_hola': this.tone(500, 0.12, { type: 'sine', vol: 0.08, slide: 1.8 }); this.tone(700, 0.15, { type: 'sine', vol: 0.08, slide: 1.6, at: 0.14 }); break;
+      case 'maquina': this.burst(1.2, { type: 'lowpass', freq: 300, vol: 0.3 }); [110, 0, 147, 0, 196].forEach((f, i) => f && this.tone(f, 0.2, { type: 'square', vol: 0.06, at: i * 0.15 })); break;
+      case 'cristal_llama': [1318, 1568, 2093].forEach((f, i) => this.tone(f, 0.8, { type: 'sine', vol: 0.05, at: i * 0.15, echo: true })); break;
+      case 'nucleo': this.tone(110, 1.4, { type: 'sawtooth', vol: 0.05, slide: 4, attack: 0.3 }); break;
+      case 'guardian_despierta': this.burst(1.6, { type: 'lowpass', freq: 200, vol: 0.5 }); this.tone(55, 1.6, { type: 'sawtooth', vol: 0.08, slide: 2, attack: 0.4 }); break;
+      case 'carga': this.tone(220, 0.75, { type: 'sawtooth', vol: 0.05, slide: 3, attack: 0.1 }); break;
+      case 'golpe_guardian': this.burst(0.6, { type: 'lowpass', freq: 500, vol: 0.6 }); this.tone(60, 0.6, { vol: 0.3, slide: 0.5 }); break;
+      case 'celula': this.tone(660, 0.4, { type: 'sine', vol: 0.06, slide: 1.5 }); break;
+      case 'celula_cae': this.tone(1320, 0.3, { type: 'sine', vol: 0.06, echo: true }); break;
+      case 'devolver': this.tone(880, 0.3, { type: 'square', vol: 0.06, slide: 2 }); this.burst(0.2, { type: 'bandpass', freq: 3000, vol: 0.15 }); break;
+      case 'orden': this.tone(330, 0.12, { type: 'square', vol: 0.06 }); this.tone(262, 0.2, { type: 'square', vol: 0.06, at: 0.13 }); break;
+      case 'apagado': [440, 349, 262, 196, 131].forEach((f, i) => this.tone(f, 0.4, { type: 'triangle', vol: 0.07, at: i * 0.18 })); break;
+      case 'reconfigura': this.burst(1.4, { type: 'bandpass', freq: 900, q: 0.7, slide: 0.3, vol: 0.4 }); this.tone(70, 1.2, { type: 'sawtooth', vol: 0.06, slide: 0.6 }); break;
+      case 'lunex': [262, 330, 392, 494].forEach((f, i) => this.tone(f, 2.6, { type: 'sine', vol: 0.05, at: i * 0.2, attack: 0.4, echo: true })); this.tone(65, 3, { type: 'triangle', vol: 0.1, attack: 0.6 }); break;
+      case 'senal': [523, 659, 784, 988, 1175, 1568].forEach((f, i) => this.tone(f, 1.6, { type: 'sine', vol: 0.06, at: i * 0.12, echo: true })); break;
       case 'paquete': [392, 523, 659, 784, 1046].forEach((f, i) => this.tone(f, 0.5, { type: 'triangle', vol: 0.06, at: i * 0.08, echo: true })); break;
     }
   }
@@ -96,8 +139,9 @@ export class Sound {
   blip(who) {
     if (!this.ctx) return;
     const r = Math.random();
-    const f = { dip: 500, guia: 900, dron: 300, copia: 380, inspector: 160 }[who] || 600;
-    this.tone(f * (0.9 + r * 0.25), 0.045, { type: who === 'inspector' ? 'sawtooth' : 'square', vol: 0.025, bus: this.uiBus });
+    const f = { dip: 500, tilo: 760, lunex: 220, guardian: 140, capsula: 980, registro: 1240 }[who] || 600;
+    const type = { tilo: 'sine', lunex: 'triangle', guardian: 'sawtooth' }[who] || 'square';
+    this.tone(f * (0.9 + r * 0.25), who === 'lunex' ? 0.09 : 0.045, { type, vol: who === 'tilo' ? 0.05 : 0.025, slide: who === 'tilo' ? 1.3 : 0, echo: who === 'lunex', bus: this.uiBus });
   }
 
   // ---------- música original, programada con el reloj de audio ----------
@@ -121,12 +165,20 @@ export class Sound {
       if (s % 8 === 0) play(ch[0] - 12, 2.4, { type: 'sine', vol: 0.1, attack: 0.05 });
     } else if (m === 'nivel') {
       len = fast ? 0.095 : 0.125;   // ~120 bpm en semicorcheas
-      const bars = [[48, 55, 52, 55], [45, 52, 48, 52], [41, 48, 45, 48], [43, 50, 47, 50]];
+      const bars = [[50, 57, 54, 57], [47, 54, 50, 54], [43, 50, 47, 50], [45, 52, 49, 52]];
       const bar = bars[(s >> 4) % 4];
       if (s % 2 === 0) play(bar[(s >> 1) % 4], 0.14, { type: 'square', vol: 0.05 });
       if (s % 4 === 2) hat(); if (s % 8 === 0) this.burst(0.08, { type: 'lowpass', freq: 160, vol: 0.35, at });
-      const mel = [72, 0, 76, 79, 0, 76, 74, 0, 72, 74, 76, 0, 79, 81, 79, 0];
-      const n = mel[s % 16]; if (n && (s >> 4) % 2 === 1) play(n - ((s >> 5) % 2 ? 2 : 0), 0.12, { type: 'triangle', vol: 0.05 });
+      const mel = [74, 0, 78, 81, 0, 78, 76, 0, 74, 76, 78, 0, 81, 83, 81, 0];
+      const n = mel[s % 16]; if (n && (s >> 4) % 2 === 1) play(n - ((s >> 5) % 2 ? 3 : 0), 0.14, { type: 'triangle', vol: 0.05, echo: s % 4 === 0 });
+      if (s % 32 === 0) play(bar[0] + 24, 1.6, { type: 'sine', vol: 0.03, attack: 0.2, echo: true });
+    } else if (m === 'ruinas') {
+      len = fast ? 0.1 : 0.14;
+      const bar = [[45, 52, 57, 60], [41, 48, 53, 57], [43, 50, 55, 59], [40, 47, 52, 55]][(s >> 4) % 4];
+      if (s % 4 === 0) play(bar[0], 0.5, { type: 'triangle', vol: 0.07 });
+      if (s % 2 === 1) play(bar[(s >> 1) % 4] + 24, 0.25, { type: 'sine', vol: 0.035, echo: true });
+      if (s % 8 === 4) this.burst(0.06, { type: 'lowpass', freq: 180, vol: 0.25, at });
+      if (s % 4 === 2) hat(0.025);
     } else if (m === 'persecucion') {
       len = fast ? 0.085 : 0.1;
       play([45, 45, 57, 45, 48, 45, 57, 47][s % 8], 0.09, { type: 'sawtooth', vol: 0.05 });

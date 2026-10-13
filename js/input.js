@@ -4,8 +4,8 @@ export class Input {
   constructor() {
     this.keys = new Set();
     this.stick = { x: 0, y: 0 };
-    this.touch = { jump: false, spin: false };
-    this.pressed = { jump: false, spin: false, confirm: false, pause: false, mute: false, any: false, restart: false, trial: false };
+    this.touch = { jump: false, spin: false, recordar: false };
+    this.pressed = { jump: false, spin: false, recordar: false, confirm: false, pause: false, mute: false, any: false, restart: false, trial: false, nueva: false };
     this.pad = { x: 0, y: 0, jump: false, prev: [] };
     window.addEventListener('keydown', (e) => {
       const k = e.key.toLowerCase();
@@ -15,6 +15,8 @@ export class Input {
       this.pressed.any = true;
       if (k === ' ' || k === 'k' || k === 'z') { this.pressed.jump = true; this.pressed.confirm = true; }
       if (k === 'x' || k === 'j' || k === 'shift' || k === 'e') { this.pressed.spin = true; }
+      if (k === 'c' || k === 'q' || k === 'l') this.pressed.recordar = true;
+      if (k === 'n') this.pressed.nueva = true;
       if (k === 'enter' || k === 'e') this.pressed.confirm = true;
       if (k === 'escape' || k === 'p') this.pressed.pause = true;
       if (k === 'm') this.pressed.mute = true;
@@ -22,7 +24,7 @@ export class Input {
       if (k === 't') this.pressed.trial = true;
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
-    window.addEventListener('blur', () => { this.keys.clear(); this.stick.x = this.stick.y = 0; this.touch.jump = this.touch.spin = false; });
+    window.addEventListener('blur', () => { this.keys.clear(); this.stick.x = this.stick.y = 0; this.touch.jump = this.touch.spin = this.touch.recordar = false; });
   }
   bindTouch(root) {
     root.querySelectorAll('[data-btn]').forEach(b => {
@@ -32,6 +34,7 @@ export class Input {
         this.touch[name] = true; this.pressed.any = true;
         if (name === 'jump') { this.pressed.jump = true; this.pressed.confirm = true; }
         if (name === 'spin') { this.pressed.spin = true; this.pressed.confirm = true; }
+        if (name === 'recordar') this.pressed.recordar = true;
         if (name === 'pause') this.pressed.pause = true;
       };
       const up = () => { this.touch[name] = false; b.classList.remove('on'); };
@@ -64,7 +67,7 @@ export class Input {
     const end = (e) => { if (e.pointerId !== id) return; id = null; this.stick.x = this.stick.y = 0; rest(); };
     zone.addEventListener('pointerup', end); zone.addEventListener('pointercancel', end); zone.addEventListener('lostpointercapture', end);
   }
-  // Mando: stick izquierdo o cruceta, A saltar, X/B girar, Start pausa (zona muerta 0.15)
+  // Mando: stick izquierdo o cruceta, A saltar, X/B girar, Y recordar, Start pausa (zona muerta 0.15)
   poll() {
     const gp = navigator.getGamepads ? [...navigator.getGamepads()].find(Boolean) : null;
     if (!gp) { this.pad.x = this.pad.y = 0; this.pad.jump = false; return; }
@@ -77,6 +80,7 @@ export class Input {
     const edge = (i) => b(i) && !this.pad.prev[i];
     if (edge(0)) { this.pressed.jump = true; this.pressed.confirm = true; this.pressed.any = true; }
     if (edge(2) || edge(1)) { this.pressed.spin = true; this.pressed.any = true; }
+    if (edge(3)) { this.pressed.recordar = true; this.pressed.any = true; }
     if (edge(9)) this.pressed.pause = true;
     this.pad.prev = gp.buttons.map(q => q.pressed);
   }
