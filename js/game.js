@@ -468,6 +468,8 @@ export class Game {
       tx = p.pos.x * 0.6 - fx * dist; ty = c.anchor + C.camHeight * wide + 2.5 * turn; tz = p.pos.z - fz * dist;
       lx = p.pos.x * 0.8 + fx * C.camLookAhead; ly = c.anchor + 1; lz = p.pos.z + fz * C.camLookAhead;
     }
+    // en vertical se ve menos a los lados: la cámara se aleja un poco de lo que mira
+    if (this.view.h > this.view.w && this.mode !== 'titulo') { const k = c.fix ? 1.45 : 1.2; tx = lx + (tx - lx) * k; ty = ly + (ty - ly) * k; tz = lz + (tz - lz) * k; }
     if (c.snap) { c.x = tx; c.y = ty; c.z = tz; c.look.x = lx; c.look.y = ly; c.look.z = lz; c.snap = false; this.savePrev(); }
     else {
       const sp = c.fix ? c.speed : C.camFollowXZ;

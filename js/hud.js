@@ -13,7 +13,8 @@ export class Hud {
   resize(w, h) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     this.cv.width = Math.round(w * dpr); this.cv.height = Math.round(h * dpr);
-    this.u = this.cv.height / 360; this.W = this.cv.width / this.u; this.H = 360;
+    // 360 unidades de alto en horizontal; en vertical manda el ancho (mínimo 400) para que nada se corte
+    this.u = Math.min(this.cv.height / 360, this.cv.width / 400); this.W = this.cv.width / this.u; this.H = this.cv.height / this.u;
   }
   font(px, w = 'bold', fam = FONT) { this.ctx.font = `${w} ${px}px ${fam}`; }
   wrap(text, maxW, px, w = 'normal') {
@@ -76,16 +77,17 @@ export class Hud {
   drawTitle(W, H) {
     const c = this.ctx, g = this.g, t = g.time;
     const grd = c.createLinearGradient(0, 0, 0, H); grd.addColorStop(0, 'rgba(30,20,60,.55)'); grd.addColorStop(0.55, 'rgba(30,20,60,.1)'); grd.addColorStop(1, 'rgba(30,20,60,.6)'); c.fillStyle = grd; c.fillRect(0, 0, W, H);
-    this.font(82, '900'); this.text('DIP', W / 2, 108, C.paper, 'center');
+    const y0 = Math.min(H * 0.3, H * 0.52 - 70);
+    this.font(82, '900'); this.text('DIP', W / 2, y0, C.paper, 'center');
     const iri = c.createLinearGradient(W / 2 - 150, 0, W / 2 + 150, 0);
     iri.addColorStop(0, '#ffc8ee'); iri.addColorStop(0.5 + Math.sin(t) * 0.2, '#c8f0ff'); iri.addColorStop(1, '#d8c8ff');
-    this.font(16, 'bold'); c.textAlign = 'center'; c.fillStyle = 'rgba(20,10,30,.5)'; c.fillText('EL ÚLTIMO RECUERDO DEL UNIVERSO', W / 2 + 1, 134.5); c.fillStyle = iri; c.fillText('EL ÚLTIMO RECUERDO DEL UNIVERSO', W / 2, 133);
-    this.font(11, 'normal'); this.text('Mundo 1 · Nácar, el planeta de la caída', W / 2, 154, '#efe6ff', 'center');
+    this.font(16, 'bold'); c.textAlign = 'center'; c.fillStyle = 'rgba(20,10,30,.5)'; c.fillText('EL ÚLTIMO RECUERDO DEL UNIVERSO', W / 2 + 1, y0 + 26.5); c.fillStyle = iri; c.fillText('EL ÚLTIMO RECUERDO DEL UNIVERSO', W / 2, y0 + 25);
+    this.font(11, 'normal'); this.text('Mundo 1 · Nácar, el planeta de la caída', W / 2, y0 + 46, '#efe6ff', 'center');
     if (!IS_TOUCH) {
       this.font(10, 'normal');
-      this.text('Flechas o WASD: moverte · Espacio: saltar · X: girar · C: recordar · Esc: pausa', W / 2, 336, '#efe6ff', 'center');
+      this.text('Flechas o WASD: moverte · Espacio: saltar · X: girar · C: recordar · Esc: pausa', W / 2, H - 24, '#efe6ff', 'center');
     }
-    this.text('Mejor con sonido', W / 2, 350, '#d8cce8', 'center');
+    this.text('Mejor con sonido', W / 2, H - 10, '#d8cce8', 'center');
   }
   drawLetterbox(W, H) { const h = Math.round(this.g.letterbox * 24); if (h > 0) { this.ctx.fillStyle = '#0d0a14'; this.ctx.fillRect(0, 0, W, h); this.ctx.fillRect(0, H - h, W, h); } }
 
@@ -233,6 +235,7 @@ export class Hud {
   drawEnd(W, H) {
     const g = this.g, r = g.result, c = this.ctx, t = g.endT || 0; if (!r) return;
     const bg = c.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#f4eefc'); bg.addColorStop(1, '#e2d4f2'); c.fillStyle = bg; c.fillRect(0, 0, W, H);
+    c.save(); c.translate(0, (H - 360) / 2);
     c.globalAlpha = Math.min(1, t / 1);
     this.font(11, 'bold'); this.text(g.trial ? 'CONTRARRELOJ' : 'MUNDO 1 COMPLETADO', W / 2, 46, '#6a5aa0', 'center', false);
     this.font(28, '900'); this.text('Nácar', W / 2, 76, C.ink, 'center', false);
@@ -258,7 +261,7 @@ export class Hud {
     c.globalAlpha = Math.max(0, Math.min(1, (t - 1.5) / 1));
     this.font(11, 'bold'); this.text('Siguiente: Vértice, el planeta de las leyes rotas (próximamente)', W / 2, 300, '#a0602a', 'center', false);
     if (t > 2.5 && Math.sin(t * 3) > -0.3) { this.font(11, 'bold'); this.text(IS_TOUCH ? 'Toca para volver al inicio' : 'Espacio: volver al inicio · T: contrarreloj', W / 2, 330, '#5a4a90', 'center', false); }
-    c.globalAlpha = 1;
+    c.globalAlpha = 1; c.restore();
   }
 }
 const t2 = (t) => t * 1.5;
