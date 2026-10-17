@@ -11,7 +11,7 @@ export class Memorias {
 
   update(dt) {
     const g = this.g, p = g.player;
-    this.near = null; this.cooldown = Math.max(0, this.cooldown - dt);
+    this.near = null; this.nearSwitch = null; this.cooldown = Math.max(0, this.cooldown - dt);
     for (const m of g.L.memorias) {
       for (const s of m.targets) if (s.form !== undefined && s.form < 1) s.form = Math.min(1, s.form + dt * 3.2);
       if (m.state === 'activa') {
@@ -23,6 +23,7 @@ export class Memorias {
       }
       if (m.state !== 'lista' || p.hidden || p.state === 'dead') continue;
       const d = Math.hypot(p.pos.x - m.x, p.pos.z - m.z);
+      if (m.interruptor) { if (d < 2.6 && Math.abs(p.pos.y - m.y) < 1.8) this.nearSwitch = m; continue; }
       if (d < 2.6 && Math.abs(p.pos.y - m.y) < 1.8 && (!this.near || d < this.near.d)) { this.near = m; m.d = d; }
     }
   }

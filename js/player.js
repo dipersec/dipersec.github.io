@@ -54,20 +54,23 @@ export function updatePlayer(p, wish, input, solids, dt, hooks) {
 
   // Salto con coyote y buffer
   const canJump = !locked && ((GROUNDED.has(p.state) && p.onGround) || (p.state === STATE.FALLING && p.coyote > 0));
+  const gd = p.gdir || 1, gm = p.gmul || 1;   // dirección y fuerza de la gravedad local (campos de Vértice)
   if (p.jumpBuffer > 0 && canJump) {
-    p.vel.y = jumpVel(); p.jumpBuffer = 0; p.coyote = 0; p.onGround = false; p.cut = false;
+    p.vel.y = jumpVel() * gd; p.jumpBuffer = 0; p.coyote = 0; p.onGround = false; p.cut = false;
     setState(p, STATE.JUMPING); hooks.onJump?.();
   }
-  if (p.state === STATE.JUMPING && !input.jumpHeld && !p.cut && p.vel.y > 0) { p.vel.y *= CONFIG.cutMult; p.cut = true; }
+  if (p.state === STATE.JUMPING && !input.jumpHeld && !p.cut && p.vel.y * gd > 0) { p.vel.y *= CONFIG.cutMult; p.cut = true; }
 
   // Giro de compilación
   if (input.spinPressed && !locked && p.spin <= 0 && p.spinCd <= 0) { p.spin = CONFIG.spinTime; p.spinCd = CONFIG.spinTime + CONFIG.spinCooldown; hooks.onSpin?.(); }
 
   // Gravedad con peso al caer (más suave mientras gira en el aire)
-  const g = gravity() * (p.vel.y < 0 ? CONFIG.fallMult : 1) * (p.spin > 0 && p.vel.y < 0 ? 0.6 : 1);
-  p.vel.y = Math.max(p.vel.y - g * dt, -CONFIG.maxFall);
-  const wasGround = p.onGround, vyBefore = p.vel.y;
-  moveAndCollide(p, solids, dt, wasGround ? CONFIG.stepHeight : 0);
+  const falling = p.vel.y * gd < 0;
+  const g = gravity() * gm * (falling ? CONFIG.fallMult : 1) * (p.spin > 0 && falling ? 0.6 : 1);
+  p.vel.y -= g * gd * dt;
+  if (p.vel.y * gd < -CONFIG.maxFall) p.vel.y = -CONFIG.maxFall * gd;
+  const wasGround = p.onGround, vyBefore = p.vel.y * gd;
+  moveAndCollide(p, solids, dt, wasGround && gd > 0 ? CONFIG.stepHeight : 0);
   p.landVel = vyBefore;
 
   switch (p.state) {
@@ -75,7 +78,7 @@ export function updatePlayer(p, wish, input, solids, dt, hooks) {
       if (!p.onGround) { setState(p, STATE.FALLING); break; }
       setState(p, has ? STATE.RUNNING : STATE.IDLE); break;
     case STATE.JUMPING:
-      if (p.vel.y <= 0) setState(p, STATE.FALLING);
+      if (p.vel.y * gd <= 0) setState(p, STATE.FALLING);
       if (p.onGround && p.stateTime > 0.05) { setState(p, STATE.LANDING); hooks.onLand?.(vyBefore); }
       break;
     case STATE.FALLING:
@@ -97,6 +100,6 @@ export function updatePlayer(p, wish, input, solids, dt, hooks) {
 
 // Rebote al pisar una caja o un enemigo
 export function bounce(p, mult = CONFIG.bounceMult) {
-  p.vel.y = jumpVel() * mult; p.onGround = false; p.cut = true; p.coyote = 0;
+  p.vel.y = jumpVel() * mult * (p.gdir || 1); p.onGround = false; p.cut = true; p.coyote = 0;
   setState(p, STATE.JUMPING); p.sq = CONFIG.stretchJump;
 }

@@ -6,7 +6,6 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { makeTextures, worldUV } from './textures.js';
 import { CONFIG } from './config.js';
-import { EscenaNacar } from './mundos/nacar/escena.js';
 
 const HEX = (h) => new THREE.Color(h);
 const ni = (q) => (q.index ? q.toNonIndexed() : q);
@@ -26,11 +25,11 @@ export class World {
     this.t = 0; this.env = null; this.tmpC = new THREE.Color(); this.tmpV = new THREE.Vector3(); this.tmpM = new THREE.Matrix4();
     this.tmpQ = new THREE.Quaternion(); this.tmpE = new THREE.Euler(); this.tmpS = new THREE.Vector3();
     this.tex = makeTextures(r);
-    this.escena = new EscenaNacar(this);
+    this.escena = new game.M.Escena(this);
     this.lejanos = [];   // objetos con z fija que se ocultan cuando quedan lejos de DIP
     this.buildEnv(); this.buildLights(); this.buildSky(); this.buildSolids();
     this.escena.build();
-    this.buildCrates(); this.buildCollectibles(); this.buildEnemies(); this.buildMemoria(); this.buildMecanismos(); this.buildDip(); this.buildFx();
+    this.buildCrates(); this.buildCollectibles(); this.buildEnemies(); this.buildMemoria(); this.buildMecanismos(); this.buildFisica(); this.buildDip(); this.buildFx();
   }
 
   // ---------- helpers ----------
@@ -55,7 +54,7 @@ export class World {
   }
   blob(r) {
     const g = new THREE.CircleGeometry(r, 20); g.rotateX(-Math.PI / 2);
-    const m = new THREE.Mesh(g, this.basic(0x000000, { transparent: true, opacity: 0.35, depthWrite: false })); m.position.y = 0.02; return m;
+    const m = new THREE.Mesh(g, this.basic(0x000000, { transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide })); m.position.y = 0.02; return m;
   }
   // puntos brillantes en una sola draw call
   points(arr, color, size, opacity, parent) {
@@ -129,12 +128,15 @@ export class World {
       placa: [this.std({ map: T.placa, roughness: 0.8 })],
       piedra: [this.std({ color: 0xe0905a, roughness: 0.5, map: T.roca })],
       torre: [this.std({ map: T.metal, color: 0xb8c0d0, roughness: 0.35, metalness: 0.8 })],
-      reja: [this.std({ map: T.metal, color: 0x9aa4b8, metalness: 0.85, roughness: 0.3 })]
+      reja: [this.std({ map: T.metal, color: 0x9aa4b8, metalness: 0.85, roughness: 0.3 })],
+      vidrio: [new THREE.MeshPhysicalMaterial({ color: 0xd8f4ff, roughness: 0.05, metalness: 0, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide, envMapIntensity: 1.5 })],
+      ...(this.escena.materiales?.() || {})
     };
     this.solidMeshes = new Map(); this.solidBuckets = new Map();
     const Z = L.chase ? L.chase.zona : null;
     for (const s of L.solids) {
       if (s.crate || s.invisible || s.ghost || s.door || s.temp || s.exit) continue;
+      const movil = this.g.L.moviles.find(q => q.s === s);
       const w = s.x1 - s.x0, h = s.y1 - s.y0, d = s.z1 - s.z0, cx = (s.x0 + s.x1) / 2, cy = (s.y0 + s.y1) / 2, cz = (s.z0 + s.z1) / 2;
       const set = this.M[s.mat] || this.M.arena;
       let geo, mat;
@@ -150,7 +152,7 @@ export class World {
       }
       const cast = ['torre', 'piedra', 'placa'].includes(s.mat) || (!s.wall && h < 3 && s.y1 > 0.5);
       const erasable = Z && !s.wall && s.z0 < Z[0] && s.z0 > Z[1];
-      if (!s.falling && !erasable) { this.bucketSolid(geo, mat, cx, cy, cz, cast); continue; }
+      if (!s.falling && !erasable && !movil && s.mat !== 'vidrio') { this.bucketSolid(geo, mat, cx, cy, cz, cast); continue; }
       const m = this.mesh(geo, mat, cx, cy, cz, { cast });
       this.solidMeshes.set(s, m);
     }
@@ -262,9 +264,15 @@ export class World {
     const comun = this.std({ color: 0x8a5a9a, roughness: 0.35, metalness: 0.3 });
     const sackG = new THREE.SphereGeometry(0.2, 12, 8);
     const sackM = this.std({ color: 0x7a5a3a, roughness: 0.9 });
+    // variantes de otros mundos: saltador del vacío (bola con orejas) y constructor (robot con casco)
+    const salG = mergeGeometries([new THREE.SphereGeometry(0.34, 18, 12).translate(0, 0.34, 0), new THREE.ConeGeometry(0.08, 0.4, 8).translate(-0.15, 0.78, 0), new THREE.ConeGeometry(0.08, 0.4, 8).translate(0.15, 0.78, 0)].map(q => { const k = ni(q); k.deleteAttribute('uv'); return k; }));
+    const salM = this.std({ color: 0x6a5ad8, roughness: 0.4, emissive: 0x2a1a6a, emissiveIntensity: 0.4 });
+    const conG = mergeGeometries([new RoundedBoxGeometry(0.6, 0.55, 0.5, 2, 0.1).translate(0, 0.42, 0), new THREE.SphereGeometry(0.3, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, 0.7, 0), new THREE.CylinderGeometry(0.06, 0.06, 0.2, 6).translate(-0.15, 0.1, 0), new THREE.CylinderGeometry(0.06, 0.06, 0.2, 6).translate(0.15, 0.1, 0)].map(q => { const k = ni(q); k.deleteAttribute('uv'); return k; }));
+    const conM = this.std({ color: 0xe8b84a, roughness: 0.4, metalness: 0.3 });
     this.bichoMeshes = L.bichos.map(b => {
       const grp = new THREE.Group(); this.scene.add(grp);
-      const m = new THREE.Mesh(body, b.ladron ? ladron : b.pasivo ? pasivo : comun); m.castShadow = true; grp.add(m);
+      const m = new THREE.Mesh(b.salta ? salG : b.constructor_ ? conG : body, b.salta ? salM : b.constructor_ ? conM : b.ladron ? ladron : b.pasivo ? pasivo : comun); m.castShadow = true; grp.add(m);
+      if (b.salta || b.constructor_) { const e = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.08, 0.04), this.basic(0x9ff0ff, { toneMapped: false })); e.position.set(0, b.salta ? 0.42 : 0.5, b.salta ? 0.33 : 0.27); grp.add(e); grp.userData.squ = m; }
       if (b.ladron) { const s = new THREE.Mesh(sackG, sackM); s.position.set(0, 0.42, -0.2); grp.add(s); grp.userData.sack = s; for (let i = 0; i < 3; i++) { const st = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.05, 0.08), this.basic(0x2a2230)); st.position.set(0, 0.36, -0.15 + i * 0.16); grp.add(st); } }
       grp.add(this.blob(0.45));
       this.lejos(grp, b.z);
@@ -278,9 +286,9 @@ export class World {
     this.esferaMeshes = L.esferas.map(s => {
       const grp = new THREE.Group(); grp.position.set(s.x, s.y, s.z); this.scene.add(grp);
       const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.65, 0.5, 10), this.M.santuario[0]); ped.position.y = 0.25; ped.receiveShadow = true; grp.add(ped);
-      const mat = this.nacar({ color: 0xd8d0ff, emissive: 0x9a7aff, emissiveIntensity: 0.6 });
+      const mat = this.nacar({ color: s.color || 0xd8d0ff, emissive: s.brillo || 0x9a7aff, emissiveIntensity: 0.6 });
       const sph = new THREE.Mesh(new THREE.SphereGeometry(0.45, 32, 16), mat); sph.position.y = 1.1; sph.castShadow = true; grp.add(sph);
-      const gl = this.glow(0xb89aff, 2.6, 0, 1.1, 0, 0.6, grp);
+      const gl = this.glow(s.brillo || 0xb89aff, 2.6, 0, 1.1, 0, 0.6, grp);
       this.lejos(grp, s.z, true);
       return { s, sph, gl, mat };
     });
@@ -370,7 +378,8 @@ export class World {
       const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.55, 0.35, 12), pedM); ped.position.y = 0.17; ped.castShadow = ped.receiveShadow = true; grp.add(ped);
       const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.035, 8, 48), ringM.clone()); ring.position.y = 1.1; grp.add(ring);
       const ring2 = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.025, 8, 40), ringM.clone()); ring2.position.y = 1.1; grp.add(ring2);
-      const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.16, 0), this.nacar({ emissive: 0x9fe8ff, emissiveIntensity: 1 })); core.position.y = 1.1; grp.add(core);
+      const core = new THREE.Mesh(m.interruptor ? new THREE.BoxGeometry(0.34, 0.34, 0.34) : new THREE.OctahedronGeometry(0.16, 0), this.nacar(m.interruptor ? { color: 0xffe8a0, emissive: 0xffb830, emissiveIntensity: 0.8 } : { emissive: 0x9fe8ff, emissiveIntensity: 1 })); core.position.y = 1.1; grp.add(core);
+      if (m.interruptor) { const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.8, 8), this.std({ color: 0xd8b060, metalness: 0.9, roughness: 0.3 })); arm.position.y = 0.6; grp.add(arm); }
       const gl = this.glow(0x9fe8ff, 2.2, 0, 1.1, 0, 0.5, grp);
       this.lejos(grp, m.z);
       return { m, grp, ring, ring2, core, gl };
@@ -400,6 +409,52 @@ export class World {
       const m = this.mesh(new RoundedBoxGeometry(w, h, d, 2, 0.06), tm.clone(), (s.x0 + s.x1) / 2, (s.y0 + s.y1) / 2, (s.z0 + s.z1) / 2);
       this.lejos(m, q.s.z0);
       return { q, m };
+    });
+  }
+
+  // textura de agua que sube (cascadas); la crea quien la necesite primero
+  agua() {
+    if (this.aguaTex) return this.aguaTex;
+    const wc = document.createElement('canvas'); wc.width = 64; wc.height = 256; const x = wc.getContext('2d');
+    const gr = x.createLinearGradient(0, 0, 64, 0); gr.addColorStop(0, 'rgba(160,230,255,.15)'); gr.addColorStop(0.5, 'rgba(220,250,255,.75)'); gr.addColorStop(1, 'rgba(160,230,255,.15)');
+    x.fillStyle = gr; x.fillRect(0, 0, 64, 256);
+    for (let i = 0; i < 40; i++) { x.fillStyle = `rgba(255,255,255,${0.3 + Math.random() * 0.5})`; x.fillRect(Math.random() * 64, Math.random() * 256, 2, 10 + Math.random() * 30); }
+    this.aguaTex = new THREE.CanvasTexture(wc); this.aguaTex.wrapS = this.aguaTex.wrapT = THREE.RepeatWrapping; this.aguaTex.colorSpace = THREE.SRGBColorSpace;
+    return this.aguaTex;
+  }
+
+  // ---------- cascadas ascendentes, campos de gravedad y medusas ----------
+  buildFisica() {
+    const L = this.g.L;
+    this.agua();
+    this.corrMeshes = L.corrientes.map(c => {
+      const h = c.y1 - c.y0, tex = this.aguaTex.clone(); tex.needsUpdate = true; tex.repeat.set(2, h / 6);
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(c.r * 0.85, c.r, h, 24, 1, true), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, color: 0x9fe8ff }));
+      m.position.set(c.x, c.y0 + h / 2, c.z); this.scene.add(m);
+      const top = this.glow(0xc8f4ff, c.r * 3, c.x, c.y1, c.z, 0.5);
+      this.lejos(m, c.z); this.lejos(top, c.z);
+      return { c, m, tex, top };
+    });
+    const col = { invertida: 0xb89aff, ligera: 0x9fe8ff, pesada: 0xffa060 };
+    this.campoMeshes = L.campos.filter(c => !c.oculto).map(c => {
+      const w = c.x1 - c.x0, h = c.y1 - c.y0, d = c.z1 - c.z0;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshBasicMaterial({ color: col[c.tipo], transparent: true, opacity: 0.07, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+      m.position.set((c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2, (c.z0 + c.z1) / 2); this.scene.add(m);
+      const n = Math.round(w * d * 0.6), pos = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { pos[i * 3] = c.x0 + Math.random() * w; pos[i * 3 + 1] = c.y0 + Math.random() * h; pos[i * 3 + 2] = c.z0 + Math.random() * d; }
+      const pts = this.points(pos, col[c.tipo], 0.5, 0.55);
+      this.lejos(m, (c.z0 + c.z1) / 2); this.lejos(pts, (c.z0 + c.z1) / 2);
+      return { c, m, pts, base: pos.slice() };
+    });
+    const jm = this.nacar({ color: 0xc8f0ff, emissive: 0x5ac8ff, emissiveIntensity: 0.6, transparent: true, opacity: 0.85 });
+    this.medusaMeshes = L.medusas.map(q => {
+      const grp = new THREE.Group(); this.scene.add(grp);
+      const bell = new THREE.Mesh(new THREE.SphereGeometry(0.6, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), jm); bell.scale.y = 0.8; grp.add(bell);
+      const tents = [];
+      for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2, tt = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.01, 0.9, 5), jm); tt.position.set(Math.cos(a) * 0.35, -0.45, Math.sin(a) * 0.35); grp.add(tt); tents.push(tt); }
+      this.glow(0x9fe8ff, 2.2, 0, 0.1, 0, 0.5, grp);
+      this.lejos(grp, q.z);
+      return { q, grp, bell, tents };
     });
   }
 
@@ -464,7 +519,7 @@ export class World {
     const cx = v.cx + (c.x - v.cx) * a + (Math.random() * 2 - 1) * sh, cy = v.cy + (c.y - v.cy) * a + (Math.random() * 2 - 1) * sh, cz = v.cz + (c.z - v.cz) * a;
     this.camera.position.set(cx, cy, cz);
     this.camera.lookAt(c.look.x, c.look.y, c.look.z);
-    this.camera.rotation.z += (Math.random() * 2 - 1) * 0.03 * tr * tr;
+    this.camera.rotation.z += (Math.random() * 2 - 1) * 0.03 * tr * tr + (c.roll || 0);
     this.dome.position.copy(this.camera.position);
     const p = g.player, px = v.px + (p.pos.x - v.px) * a, py = v.py + (p.pos.y - v.py) * a, pz = v.pz + (p.pos.z - v.pz) * a;
     const fz = g.mode === 'titulo' ? 6 : pz;
@@ -476,6 +531,7 @@ export class World {
     this.drawEnemies(t);
     this.drawMemoria(t);
     this.drawMecanismos(t);
+    this.drawFisica(t);
     this.escena.draw(t, dt, px, py, pz);
     this.cull(g.mode === 'titulo' ? 6 : pz);
     this.drawDip(t, px, py, pz);
@@ -514,6 +570,7 @@ export class World {
       m.visible = (f.s.active || f.state === 'cae') && !f.s.erased;
     }
     if (g.chase.on || g.chase.done) for (const [s, m] of this.solidMeshes) if (!s.falling) m.visible = !s.erased;
+    for (const q of g.L.moviles) { const m = this.solidMeshes.get(q.s); if (m) m.position.set((q.s.x0 + q.s.x1) / 2, (q.s.y0 + q.s.y1) / 2, (q.s.z0 + q.s.z1) / 2); }
     if (g.gate && !this.gateMesh) {
       const gs = g.gate; this.gateMesh = new THREE.Group(); this.scene.add(this.gateMesh);
       for (let x = gs.x0 + 0.4; x < gs.x1; x += 0.8) { const b = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, gs.y1 - gs.y0, 8), this.M.reja[0]); b.position.set(x, (gs.y0 + gs.y1) / 2, (gs.z0 + gs.z1) / 2); this.gateMesh.add(b); }
@@ -597,6 +654,7 @@ export class World {
       grp.rotation.y = b.launched ? b.spinA : (b.axis === 'x' ? (b.dir > 0 ? Math.PI / 2 : -Math.PI / 2) : (b.dir > 0 ? 0 : Math.PI));
       grp.rotation.z = b.launched ? b.spinA * 0.7 : 0;
       if (grp.userData.sack) grp.userData.sack.scale.setScalar(0.6 + Math.min(1, (b.robado || 0) / 8) * 0.8);
+      if (b.salta) { const pre = b.y <= (b.hy ?? b.y) + 0.01 && (b.hopT || 0) > b.salta - 0.35; grp.userData.squ.scale.set(pre ? 1.2 : 1, pre ? 0.75 : 1 + Math.min(0.25, Math.abs(b.vy || 0) * 0.03), pre ? 1.2 : 1); grp.position.y = b.y; }
     }
     for (const { f, grp } of this.formaMeshes) {
       grp.visible = f.alive && !(ch.on && f.z > ch.z);
@@ -672,13 +730,14 @@ export class World {
       const m = o.m;
       o.grp.visible = m.state !== 'oculta';
       if (!o.grp.visible) continue;
-      const activa = m.state === 'activa', cerca = near === m;
+      const activa = m.state === 'activa', cerca = near === m || g.memorias.nearSwitch === m;
       const k = activa && m.dur !== Infinity ? Math.max(0, m.t / m.dur) : 1;
       o.ring.rotation.set(Math.PI / 2 + Math.sin(t) * 0.2, t * (activa ? 3 : 0.8), 0);
       o.ring2.rotation.set(Math.PI / 2, -t * 1.6, Math.sin(t * 1.3) * 0.4);
       o.ring.scale.setScalar(activa ? 0.4 + 0.6 * k : 1 + (cerca ? Math.sin(t * 8) * 0.08 : 0));
       o.core.rotation.y = t * 2; o.core.position.y = 1.1 + Math.sin(t * 2.4) * 0.08;
-      const col = !puede ? 0x7a8aa0 : activa ? (m.t < 1.6 && Math.sin(t * 22) > 0 ? 0xffd36a : 0x9fe8ff) : 0x9fe8ff;
+      const col = m.interruptor ? (activa ? 0x6affb8 : 0xffc850) : !puede ? 0x7a8aa0 : activa ? (m.t < 1.6 && Math.sin(t * 22) > 0 ? 0xffd36a : 0x9fe8ff) : 0x9fe8ff;
+      if (m.interruptor) { o.core.rotation.set(t, t * 1.3, 0); o.ring.scale.setScalar(activa ? 1.3 : 1 + Math.sin(t * 4) * 0.06); }
       o.ring.material.color.setHex(col); o.ring2.material.color.setHex(col); o.gl.material.color.setHex(col);
       o.gl.material.opacity = cerca ? 0.9 : activa ? 0.6 : puede ? 0.45 : 0.18;
       o.gl.scale.setScalar(cerca ? 2.8 + Math.sin(t * 8) * 0.3 : 2.2);
@@ -704,6 +763,23 @@ export class World {
     }
   }
 
+  drawFisica(t) {
+    for (const o of this.corrMeshes) { const on = o.c.activo !== false; o.m.visible = on; o.top.visible = on; o.tex.offset.y = -t * 1.4; }
+    for (const o of this.campoMeshes) {
+      const on = !!o.c.activo; o.m.visible = on; o.pts.visible = on;
+      if (!on || Math.abs(o.c.z0 - this.g.player.pos.z) > 80) continue;
+      const a = o.pts.geometry.attributes.position, c = o.c, dir = c.tipo === 'invertida' ? 1 : c.tipo === 'pesada' ? -1 : 0.4, h = c.y1 - c.y0;
+      for (let i = 0; i < a.count; i++) a.setY(i, c.y0 + (((o.base[i * 3 + 1] - c.y0) + t * 1.6 * dir) % h + h) % h);
+      a.needsUpdate = true;
+    }
+    for (const o of this.medusaMeshes) {
+      const q = o.q; o.grp.visible = q.alive !== false;
+      o.grp.position.set(q.x, q.y, q.z);
+      const pul = 1 + Math.sin(t * 3 + q.z) * 0.08 + (q.squash || 0) * 0.3; o.bell.scale.set(pul, 0.8 / pul, pul);
+      o.tents.forEach((tt, i) => (tt.rotation.x = Math.sin(t * 4 + i) * 0.3));
+    }
+  }
+
   drawDip(t, px, py, pz) {
     const g = this.g, p = g.player, sheet = this.assets.dip;
     const blink = p.invuln > 0 && p.state !== 'dead' && Math.floor(t * 16) % 2 === 0;
@@ -715,14 +791,16 @@ export class World {
     let ry = Math.atan2(cam.x - this.dip.position.x, cam.z - this.dip.position.z);
     if (p.spin > 0) ry += (1 - p.spin / CONFIG.spinTime) * Math.PI * 4;
     this.dip.rotation.set(0, ry, 0);
-    const sq = p.sq || 1;
-    this.dip.scale.set(p.face / Math.sqrt(sq), sq, 1);
+    const sq = p.sq || 1, fl = this.dipFlip = (this.dipFlip ?? 1) + ((p.gdir || 1) - (this.dipFlip ?? 1)) * 0.22;
+    this.dip.scale.set(p.face / Math.sqrt(sq), sq * fl, 1);
+    if (fl < 1) this.dip.position.y = py + (1 - fl) / 2 * p.h * 1.16;
     // sombra bajo DIP siempre visible (también en el aire): marca dónde va a caer
     const gy = p.shadowY;
     this.dipShadow.visible = this.dip.visible && gy !== null && gy !== undefined;
     if (this.dipShadow.visible) {
       const hgt = Math.max(0, py - gy), s = Math.max(0.45, 1 - hgt / 8);
-      this.dipShadow.position.set(px, gy + 0.03, pz); this.dipShadow.scale.set(s, 1, s); this.dipShadow.material.opacity = 0.5 * s;
+      const inv = (p.gdir || 1) < 0, hgt2 = inv ? Math.max(0, gy - (py + p.h)) : hgt, s2 = Math.max(0.45, 1 - hgt2 / 8);
+      this.dipShadow.position.set(px, inv ? gy - 0.03 : gy + 0.03, pz); this.dipShadow.scale.set(s2, 1, s2); this.dipShadow.material.opacity = 0.5 * s2;
     }
   }
 

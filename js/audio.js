@@ -131,6 +131,14 @@ export class Sound {
       case 'reconfigura': this.burst(1.4, { type: 'bandpass', freq: 900, q: 0.7, slide: 0.3, vol: 0.4 }); this.tone(70, 1.2, { type: 'sawtooth', vol: 0.06, slide: 0.6 }); break;
       case 'lunex': [262, 330, 392, 494].forEach((f, i) => this.tone(f, 2.6, { type: 'sine', vol: 0.05, at: i * 0.2, attack: 0.4, echo: true })); this.tone(65, 3, { type: 'triangle', vol: 0.1, attack: 0.6 }); break;
       case 'senal': [523, 659, 784, 988, 1175, 1568].forEach((f, i) => this.tone(f, 1.6, { type: 'sine', vol: 0.06, at: i * 0.12, echo: true })); break;
+      case 'gravedad': this.tone(220 * v, 0.45, { type: 'sine', vol: 0.08, slide: 2.2, echo: true }); this.tone(330 * v, 0.45, { type: 'triangle', vol: 0.04, slide: 0.5 }); break;
+      case 'cascada': this.burst(0.8, { type: 'bandpass', freq: 1400, q: 0.6, slide: 1.8, vol: 0.18 }); break;
+      case 'interruptor': [392, 523, 659, 784].forEach((f, i) => this.tone(f, 0.3, { type: 'square', vol: 0.05, at: i * 0.06 })); this.burst(0.15, { type: 'lowpass', freq: 600, vol: 0.3 }); break;
+      case 'medusa': this.tone(300 * v, 0.35, { type: 'sine', vol: 0.12, slide: 2.4 }); this.tone(600 * v, 0.2, { type: 'sine', vol: 0.05, slide: 1.8, at: 0.05 }); break;
+      case 'nodo_bien': [659, 880, 1175, 1568].forEach((f, i) => this.tone(f, 0.4, { type: 'triangle', vol: 0.07, at: i * 0.05, echo: true })); break;
+      case 'nodo_mal': this.tone(180, 0.35, { type: 'sawtooth', vol: 0.08, slide: 0.6 }); this.burst(0.2, { type: 'highpass', freq: 3000, vol: 0.2 }); break;
+      case 'aviso_inversion': [880, 0, 880, 0, 1175].forEach((f, i) => f && this.tone(f, 0.12, { type: 'square', vol: 0.05, at: i * 0.18, bus: this.uiBus })); break;
+      case 'ventana': [523, 784, 1046].forEach((f, i) => this.tone(f, 0.6, { type: 'sine', vol: 0.07, at: i * 0.08, echo: true })); break;
       case 'paquete': [392, 523, 659, 784, 1046].forEach((f, i) => this.tone(f, 0.5, { type: 'triangle', vol: 0.06, at: i * 0.08, echo: true })); break;
     }
   }
@@ -139,8 +147,8 @@ export class Sound {
   blip(who) {
     if (!this.ctx) return;
     const r = Math.random();
-    const f = { dip: 500, tilo: 760, lunex: 220, guardian: 140, capsula: 980, registro: 1240 }[who] || 600;
-    const type = { tilo: 'sine', lunex: 'triangle', guardian: 'sawtooth' }[who] || 'square';
+    const f = { dip: 500, tilo: 760, lunex: 220, guardian: 140, capsula: 980, registro: 1240, constructor: 620, arquitecto: 300 }[who] || 600;
+    const type = { tilo: 'sine', lunex: 'triangle', guardian: 'sawtooth', constructor: 'square', arquitecto: 'triangle' }[who] || 'square';
     this.tone(f * (0.9 + r * 0.25), who === 'lunex' ? 0.09 : 0.045, { type, vol: who === 'tilo' ? 0.05 : 0.025, slide: who === 'tilo' ? 1.3 : 0, echo: who === 'lunex', bus: this.uiBus });
   }
 
@@ -179,6 +187,22 @@ export class Sound {
       if (s % 2 === 1) play(bar[(s >> 1) % 4] + 24, 0.25, { type: 'sine', vol: 0.035, echo: true });
       if (s % 8 === 4) this.burst(0.06, { type: 'lowpass', freq: 180, vol: 0.25, at });
       if (s % 4 === 2) hat(0.025);
+    } else if (m === 'vertice') {
+      // aérea y luminosa (lidio en re): arpegio que sube y bajo suave
+      len = fast ? 0.1 : 0.13;
+      const bar = [[50, 57, 64, 68], [48, 55, 62, 66], [52, 59, 66, 69], [47, 54, 61, 66]][(s >> 4) % 4];
+      if (s % 4 === 0) play(bar[0], 0.6, { type: 'triangle', vol: 0.07 });
+      play(bar[s % 4] + 12 + ((s >> 2) % 2) * 12, 0.18, { type: 'sine', vol: 0.035, echo: s % 8 === 0 });
+      if (s % 8 === 4) hat(0.025); if (s % 16 === 0) this.burst(0.08, { type: 'lowpass', freq: 180, vol: 0.25, at });
+      const mel = [0, 81, 0, 0, 78, 0, 76, 0, 0, 74, 0, 76, 78, 0, 0, 0];
+      if ((s >> 4) % 2 === 1 && mel[s % 16]) play(mel[s % 16], 0.3, { type: 'triangle', vol: 0.045, echo: true });
+    } else if (m === 'leyes') {
+      len = fast ? 0.11 : 0.15;
+      const bar = [[43, 50, 55, 58], [41, 48, 53, 56], [46, 53, 58, 61], [45, 52, 57, 60]][(s >> 4) % 4];
+      if (s % 4 === 0) play(bar[0], 0.7, { type: 'sawtooth', vol: 0.04 });
+      if (s % 2 === 0) play(bar[(s >> 1) % 4] + 24, 0.2, { type: 'square', vol: 0.025, echo: true });
+      if (s % 8 === 0) this.burst(0.1, { type: 'lowpass', freq: 160, vol: 0.35, at });
+      if (s % 4 === 2) hat(0.03);
     } else if (m === 'persecucion') {
       len = fast ? 0.085 : 0.1;
       play([45, 45, 57, 45, 48, 45, 57, 47][s % 8], 0.09, { type: 'sawtooth', vol: 0.05 });

@@ -1,8 +1,8 @@
 // game.js — Estado del juego y update(). Aquí no se dibuja nada: world.js y hud.js solo leen.
 // El núcleo es común a los siete mundos; cada mundo aporta sus datos desde mundos/registro.js.
-import { mundo } from './mundos/registro.js';
+import { mundo, MUNDOS } from './mundos/registro.js';
 import { createPlayer, updatePlayer, setState, bounce, STATE } from './player.js';
-import { groundBelow } from './physics.js';
+import { groundBelow, groundAbove } from './physics.js';
 import { CONFIG } from './config.js';
 import { Pool } from './pool.js';
 import { Director } from './director.js';
@@ -17,6 +17,7 @@ export class Game {
     this.sound = sound; this.input = input;
     this.M = mundo(mundoId);
     this.L = this.M.construir();
+    for (const k of ['campos', 'moviles', 'corrientes', 'medusas', 'piezas', 'cristales', 'memorias', 'centinelas', 'esferas', 'ecos', 'puertas', 'temporales', 'registros', 'conchas']) this.L[k] = this.L[k] || [];
     this.solids = this.L.solids;
     this.save = cargar();
     this.ajustes = this.save.ajustes;
@@ -82,6 +83,7 @@ export class Game {
   savePrev() { const p = this.player.pos, c = this.cam, v = this.prev; v.px = p.x; v.py = p.y; v.pz = p.z; v.cx = c.x; v.cy = c.y; v.cz = c.z; }
   placePlayer(x, y, z) {
     const p = this.player; p.pos.x = x; p.pos.y = y; p.pos.z = z; p.vel.x = p.vel.y = p.vel.z = 0;
+    p.gdir = 1; p.gmul = 1;
     p.onGround = false; setState(p, STATE.FALLING); p.sq = 1; p.spin = 0;
     this.cam.anchor = y; this.cam.snap = true;
   }
@@ -106,11 +108,8 @@ export class Game {
     const pr = this.M.progresoHasta(k.z);
     for (const t of this.L.tips) if (t.z > k.z + 0.5) t.done = true;
     for (const c of this.L.checkpoints) if (c.z >= k.z - 0.5) c.on = true;
-    if (pr.tilo) this.flags.tilo = true;
-    if (pr.recolector) { for (const q of this.L.piezas) { q.got = true; q.carrier = null; } this.L.recolector.active = false; this.fx.recolector = 1; }
-    if (pr.recordar) { this.habilidades.add('recordar'); for (const c of this.L.cristales) c.got = true; }
-    if (pr.jefe) { this.boss.defeated = true; this.boss.gone = false; this.boss.off = 1; this.flags.jefe = true; this.flags.nucleoVisto = true; this.L.salida.active = false; this.fx.salida = 1; this.fx.nucleo = 1; this.fx.guardianSube = 1; }
-    for (const h of this.save.habilidades) if (h !== 'recordar' || pr.recordar) this.habilidades.add(h);
+    for (const h of this.M.habilidadesIniciales || []) this.habilidades.add(h);
+    this.M.aplicarProgreso(this, pr);
     if (vidas) this.lives = vidas; if (particulas) this.fragments = particulas; if (conchas) this.conchas = conchas;
     this.checkpoint = k; this.section = this.L.sections.find(s => s.n === k.sec) || this.section;
     this.seenSections.add(k.sec);
@@ -129,7 +128,7 @@ export class Game {
   start(trial = false) {
     this.trial = trial; this.mode = 'juego';
     if (trial) { this.irA(this.L.checkpoints[0]); this.runTime = 0; }
-    else { this.save.progreso = null; this.save.habilidades = []; this.writeSave(); this.director.run('apertura'); }
+    else { this.save.progreso = null; this.writeSave(); for (const h of this.M.habilidadesIniciales || []) this.habilidades.add(h); this.director.run('apertura'); }
   }
 
   // =====================================================================
@@ -145,7 +144,7 @@ export class Game {
     }
     if (this.mode === 'fin') {
       this.endT = (this.endT || 0) + dt; this.updateFade(dt); this.updateAmbient(dt);
-      if (this.endT > 2.5) { if (inp.pressed.trial) location.href = location.pathname + '?contrarreloj'; else if (inp.pressed.confirm || inp.pressed.jump) location.href = location.pathname; }
+      if (this.endT > 2.5) { const sig = this.siguienteMundo(); if (inp.pressed.trial) location.href = `${location.pathname}?mundo=${this.M.id}&contrarreloj`; else if (inp.pressed.confirm || inp.pressed.jump) location.href = sig && !this.trial ? `${location.pathname}?mundo=${sig.id}` : location.pathname; }
       return;
     }
     if (inp.pressed.pause && !this.director.blocking) this.paused = !this.paused;
@@ -165,7 +164,10 @@ export class Game {
     const blocking = this.director.blocking;
     if (this.timerOn && !blocking) this.runTime += dt;
 
+    this.updateMoviles(dt);
+    this.updateCampos(dt);
     this.updatePlayerStep(dt, blocking);
+    this.updateCorrientes(dt);
     this.memorias.update(dt);
     if (!blocking && inp.pressed.recordar && !this.player.hidden && this.player.state !== STATE.DEAD) this.memorias.intentar();
     this.updateCrates(dt);
@@ -179,6 +181,7 @@ export class Game {
     E.updatePuertas(this, dt);
     E.updateTemporales(this, dt);
     E.updateFalling(this, dt);
+    E.updateMedusas(this, dt);
     this.updatePickups(dt);
     this.updateChase(dt);
     this.boss.update(dt);
@@ -253,8 +256,8 @@ export class Game {
     this.director.run('reaparecer');
   }
   deathLine() {
-    const list = this.flags.tilo ? this.M.muertes.despues : this.M.muertes.antes;
-    if (this.deathsHere >= 10 && !this.flags.tendencia && this.flags.tilo) { this.flags.tendencia = true; return ['tilo', 'Diez caídas. Yo con diez caídas ya me como la montaña. Tú sigue.']; }
+    const list = this.M.muertes(this);
+    if (this.deathsHere >= 10 && !this.flags.tendencia && this.M.tendencia?.(this)) { this.flags.tendencia = true; return this.M.tendencia(this); }
     let i; do { i = Math.floor(Math.random() * list.length); } while (i === this.lastLine && list.length > 1);
     this.lastLine = i; return list[i];
   }
@@ -327,6 +330,8 @@ export class Game {
     }
     for (const b of this.L.bichos) if (b.alive && !b.launched && Math.hypot(b.x - p.x, b.z - p.z) < R + 0.4 && Math.abs(b.y - p.y) < 1.4) E.killBicho(this, b, p.x, p.z, true);
     E.spinCentinelas(this, p);
+    // mecanismos: se activan girando junto a ellos
+    for (const m of this.L.memorias) if (m.interruptor && m.state === 'lista' && Math.hypot(m.x - p.x, m.z - p.z) < 1.9 && Math.abs(m.y - p.y) < 2) this.activarInterruptor(m);
     this.boss.onSpin(p);
   }
 
@@ -373,19 +378,7 @@ export class Game {
       if (!this.save.registros.includes(this.M.id + r.id)) { this.save.registros.push(this.M.id + r.id); this.writeSave(); }
       this.showToast(`Registro ${this.L.registros.filter(q => q.got).length}/${this.L.registros.length} · ${r.title}`, 3);
     }
-    for (const q of this.L.piezas) {
-      if (q.got || !q.free) continue;
-      if (q.pop !== undefined && q.pop < 1) { q.pop = Math.min(1, q.pop + dt * 2.5); continue; }
-      if (!cerca(q, 1.0, 1.8)) continue;
-      q.got = true; this.sound.sfx('pieza');
-      const n = this.L.piezas.filter(o => o.got).length;
-      this.burst(q.x, q.y + 0.8, q.z, 14, [1, 0.85, 0.5], { speed: 3, life: 0.5 });
-      if (n < 3) this.showToast(`Pieza del recolector ${n}/3`, 1.8);
-      else if (this.flags.tilo) this.say('tilo', '¡Las tres! Llévalas al recolector, junto a la salida.', 3);
-    }
-    // con las tres piezas, el recolector se repara al acercarse
-    const r = this.L.spots.recolector;
-    if (r && this.L.recolector.active && this.L.piezas.every(q => q.got) && Math.hypot(p.pos.x - r.x, p.pos.z - r.z) < 7.5) this.director.run('reparar');
+    this.M.actualizar?.(this, dt);
     for (const k of this.L.checkpoints) {
       if (k.on || p.pos.z > k.z) continue;
       k.on = true; if (!this.checkpoint || k.z < this.checkpoint.z) this.setCheckpoint(k, true);
@@ -445,19 +438,78 @@ export class Game {
       if (!this.seenSections.has(s.n)) { this.seenSections.add(s.n); this.sectionCard = { n: s.n, name: s.name, t: 0 }; this.sound.sfx('seccion'); }
     }
   }
-  checkDeath() { if (this.player.pos.y < -6 && this.player.state !== STATE.DEAD) this.die('vacio'); }
+  checkDeath() {
+    const p = this.player, s = this.section;
+    if (p.state === STATE.DEAD) return;
+    if (p.pos.y < (s.muerteY ?? -6) || p.pos.y > (s.techoY ?? 60)) this.die('vacio');
+  }
+
+  // ---------- campos de gravedad, cascadas ascendentes, plataformas móviles y mecanismos ----------
+  updateCampos(dt) {
+    const p = this.player, cy = p.pos.y + p.h / 2;
+    let gd = 1, gm = 1;
+    for (const c of this.L.campos) {
+      if (!c.activo || p.pos.x < c.x0 || p.pos.x > c.x1 || cy < c.y0 || cy > c.y1 || p.pos.z < c.z0 || p.pos.z > c.z1) continue;
+      if (c.tipo === 'invertida') gd = -1; else if (c.tipo === 'ligera') gm = 0.5; else if (c.tipo === 'pesada') gm = 2.2;
+    }
+    if (p.hidden || p.state === STATE.DEAD) gd = p.gdir || 1;
+    if ((p.gdir || 1) !== gd) {
+      p.gdir = gd; p.vel.y *= 0.25; p.onGround = false; p.sq = 1.25;
+      if (p.state !== STATE.JUMPING) setState(p, STATE.FALLING);
+      this.sound.sfx('gravedad'); this.addTrauma(0.12);
+      this.burst(p.pos.x, p.pos.y + 0.8, p.pos.z, 16, [0.7, 0.9, 1], { speed: 3, life: 0.5 });
+    }
+    p.gmul = gm;
+  }
+  updateCorrientes(dt) {
+    const p = this.player;
+    if (p.hidden || p.state === STATE.DEAD) return;
+    for (const c of this.L.corrientes) {
+      if (!c.activo && c.activo !== undefined) continue;
+      if (Math.hypot(p.pos.x - c.x, p.pos.z - c.z) > c.r || p.pos.y < c.y0 || p.pos.y > c.y1) continue;
+      // el agua manda: lleva la velocidad vertical hacia arriba aunque DIP venga cayendo
+      p.vel.y += ((c.max || 9) - p.vel.y) * (1 - Math.exp(-dt * 18));
+      if (p.onGround) { p.onGround = false; setState(p, STATE.FALLING); }
+      if (!c.oido) { c.oido = true; this.sound.sfx('cascada'); }
+      if (Math.random() < 0.4) this.burst(p.pos.x, p.pos.y, p.pos.z, 1, [0.7, 0.95, 1], { speed: 1.5, life: 0.4, up: 3 });
+    }
+  }
+  updateMoviles(dt) {
+    const p = this.player;
+    for (const m of this.L.moviles) {
+      m.t += dt;
+      const k = (1 - Math.cos(m.t / m.period * Math.PI * 2)) / 2, v = m.a + (m.b - m.a) * k, d = v - m.v;
+      m.v = v;
+      if (!d) continue;
+      const s = m.s, ax = m.ax;
+      if (ax === 'x') { s.x0 += d; s.x1 += d; } else if (ax === 'y') { s.y0 += d; s.y1 += d; } else { s.z0 += d; s.z1 += d; }
+      if (p.ground === s && p.onGround) p.pos[ax] += d;
+    }
+  }
+  activarInterruptor(m) {
+    this.memorias.activar(m, true);
+    m.state = 'activa'; m.t = Infinity;
+    for (const id of m.campos || []) { const c = this.L.campos.find(q => q.id === id); if (c) c.activo = !c.activo; }
+    for (const id of m.corrientes || []) { const c = this.L.corrientes.find(q => q.id === id); if (c) c.activo = true; }
+    this.sound.sfx('interruptor'); this.addTrauma(0.2); this.hitStop = Math.max(this.hitStop, 0.06);
+    this.burst(m.x, m.y + 1.2, m.z, 24, [1, 0.9, 0.5], { speed: 4, life: 0.7 });
+    for (const s of m.targets) this.burst((s.x0 + s.x1) / 2, s.y1, (s.z0 + s.z1) / 2, 14, [1, 0.9, 0.6], { speed: 3, life: 0.6, up: 1 });
+    this.M.alInterruptor?.(this, m);
+  }
 
   // ---------- cámara ----------
   updateCamera(dt) {
     const p = this.player, c = this.cam, C = CONFIG;
     const damp = (a, b, l) => a + (b - a) * (1 - Math.exp(-l * dt));
-    if (p.onGround || p.pos.y < c.anchor - C.camAnchorDrop || c.snap) c.anchor = p.pos.y;
+    if (p.onGround || p.pos.y < c.anchor - C.camAnchorDrop || Math.abs(p.pos.y - c.anchor) > 4.5 || c.snap) c.anchor = p.pos.y;
+    const inc = this.L.inclinacion, zz = p.pos.z;
+    c.roll = (c.roll || 0) + (((inc && zz < inc.z0 && zz > inc.z1 && !this.boss.active) ? inc.max * Math.min(1, (inc.z0 - zz) / (inc.z0 - inc.z1) * 1.4) * Math.sin(this.time * 0.35) : 0) - (c.roll || 0)) * (1 - Math.exp(-dt * 1.5));
     let tx, ty, tz, lx, ly, lz;
-    if (this.mode === 'titulo') { const a = this.time * 0.08; tx = -2.6 + Math.sin(a) * 1.2; ty = 2.4; tz = 11.6; lx = 1.6; ly = 1.6; lz = 2; c.yaw = 0; }
+    if (this.mode === 'titulo') { const a = this.time * 0.08, T = this.M.camTitulo || { x: -2.6, y: 2.4, z: 11.6, lx: 1.6, ly: 1.6, lz: 2 }; tx = T.x + Math.sin(a) * 1.2; ty = T.y; tz = T.z; lx = T.lx; ly = T.ly; lz = T.lz; c.yaw = 0; }
     else if (c.fix) { tx = c.fix.x; ty = c.fix.y; tz = c.fix.z; lx = c.fix.lx; ly = c.fix.ly; lz = c.fix.lz; }
     else if (this.boss.active) {
       const a = this.L.spots.arena;
-      tx = p.pos.x * 0.45; ty = 9.8; tz = a.z + 16; lx = p.pos.x * 0.55; ly = 1.2; lz = (p.pos.z + a.z - 4) / 2;
+      const ay = a.y || 0; tx = p.pos.x * 0.45; ty = ay + (a.camH || 9.8); tz = a.z + 16; lx = p.pos.x * 0.55; ly = ay + 1.2; lz = (p.pos.z + a.z - 4) / 2;
       c.yaw = damp(c.yaw, 0, C.camYawLambda);
     } else {
       const targetYaw = this.chase.on ? Math.PI : 0;
@@ -467,6 +519,8 @@ export class Game {
       const dist = C.camDist * wide * (1 - 0.6 * turn);
       tx = p.pos.x * 0.6 - fx * dist; ty = c.anchor + C.camHeight * wide + 2.5 * turn; tz = p.pos.z - fz * dist;
       lx = p.pos.x * 0.8 + fx * C.camLookAhead; ly = c.anchor + 1; lz = p.pos.z + fz * C.camLookAhead;
+      // con la gravedad invertida, la cámara baja para ver a DIP caminando por el techo
+      if ((p.gdir || 1) < 0) { ty = c.anchor + p.h - C.camHeight * 0.45; ly = c.anchor + p.h - 1.2; }
     }
     // en vertical se ve menos a los lados: la cámara se aleja un poco de lo que mira
     if (this.view.h > this.view.w && this.mode !== 'titulo') { const k = c.fix ? 1.45 : 1.2; tx = lx + (tx - lx) * k; ty = ly + (ty - ly) * k; tz = lz + (tz - lz) * k; }
@@ -478,20 +532,16 @@ export class Game {
       c.look.x += (lx - c.look.x) * k; c.look.y += (ly - c.look.y) * k; c.look.z += (lz - c.look.z) * k;
     }
     c.shake = Math.max(0, c.shake - dt * C.shakeDecay);
-    p.shadowY = groundBelow(p.pos.x, p.pos.y + 0.1, p.pos.z, this.solids);
+    p.shadowY = (p.gdir || 1) < 0 ? groundAbove(p.pos.x, p.pos.y + p.h - 0.1, p.pos.z, this.solids) : groundBelow(p.pos.x, p.pos.y + 0.1, p.pos.z, this.solids);
   }
   updateFx(dt) {
     const f = this.fx, p = this.player.pos;
     const grow = (k, d) => { if (f[k] > 0 && f[k] < 1) f[k] = Math.min(1, f[k] + dt / d); };
+for (const [k, d] of Object.entries(this.M.fxCrecer || {})) grow(k, d);
     grow('recolector', 2.4); grow('guardianSube', 2.2); grow('nucleo', 1.2); grow('salida', 1.4); grow('senal', 3.2);
     if (f.lunex >= 0) f.lunex = f.lunexSale ? Math.max(-1, f.lunex - dt / 1.5) : Math.min(1, f.lunex + dt / 1.2);
     f.tiloSalta = Math.max(0, f.tiloSalta - dt * 1.5);
     for (const c of this.L.cristales) if (c.vuela !== undefined && c.vuela < 1) c.vuela = Math.min(1, c.vuela + dt / 0.9);
-    if (f.humo && Math.random() < dt * 8) {
-      const s = this.L.spots.capsula;
-      this.particles.spawn(o => { o.x = s.x + (Math.random() - 0.5) * 0.8; o.y = s.y + 1.4; o.z = s.z + (Math.random() - 0.5) * 0.8; o.vx = 0.3 + Math.random() * 0.3; o.vy = 1 + Math.random() * 0.6; o.vz = -0.2; o.life = o.max = 2.4; o.g = 0; o.drag = 0.3; o.r = 0.32; o.gg = 0.3; o.b = 0.36; o.size = 3.4; });
-    }
-    if (this.section.n !== 1) f.humo = Math.abs(p.z - this.L.spots.capsula.z) < 60;
   }
   updateFade(dt) { const f = this.fade; if (f.a < f.target) f.a = Math.min(f.target, f.a + dt * f.speed); else if (f.a > f.target) f.a = Math.max(f.target, f.a - dt * f.speed); }
   updateParticles(dt) {
@@ -513,9 +563,11 @@ export class Game {
     this.letterbox += (lb - this.letterbox) * (1 - Math.exp(-dt * 6));
   }
   updateAmbient(dt) {
-    const music = this.mode === 'titulo' ? 'titulo' : this.mode === 'fin' ? 'fin' : this.musicOverride || (this.boss.active ? 'jefe' : this.chase.on ? 'persecucion' : this.section.n >= 3 && this.section.n <= 4 ? 'ruinas' : 'nivel');
+    const music = this.mode === 'titulo' ? 'titulo' : this.mode === 'fin' ? 'fin' : this.musicOverride || (this.boss.active ? 'jefe' : this.chase.on ? 'persecucion' : this.M.musica(this));
     this.sound.update(dt, { music, fast: this.superT > 0, chase: this.chase.on ? 1 : 0 });
   }
+
+  siguienteMundo() { const m = MUNDOS[this.M.n]; return m && m.listo ? m : null; }
 
   // ---------- final del mundo ----------
   finishLevel() {

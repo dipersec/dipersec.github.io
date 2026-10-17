@@ -7,6 +7,8 @@ import { World } from './world.js';
 import { Hud } from './hud.js';
 import { CONFIG } from './config.js';
 import { setupDebug } from './debug.js';
+import { cargar } from './guardado.js';
+import { MUNDOS, desbloqueado } from './mundos/registro.js';
 
 const $ = (s) => document.querySelector(s);
 const bar = $('#carga-barra'), label = $('#carga-texto');
@@ -32,7 +34,17 @@ function setupMenus(game) {
     if (IS_TOUCH) document.querySelectorAll('.menu kbd').forEach(k => k.remove());
   };
   pintarTitulo();
-  on('#b-continuar', () => game.continuar());
+  // continuar: si la partida guardada es de otro mundo, se recarga en ese mundo
+  on('#b-continuar', () => { const pm = s.progreso && s.progreso.mundo; if (pm && pm !== game.M.id) location.search = `?mundo=${pm}&continuar`; else game.continuar(); });
+  // selector de mundos: los desbloqueados se pueden elegir; los demás muestran un candado
+  const fila = $('#mundos');
+  for (const m of MUNDOS.filter(q => q.listo)) {
+    const b = document.createElement('button'), abierto = desbloqueado(m, s) || m.id === game.M.id;
+    b.textContent = `${m.n} · ${m.nombre}`; b.disabled = !abierto; b.className = m.id === game.M.id ? 'actual' : '';
+    if (!abierto) b.title = 'Termina el mundo anterior para abrirlo';
+    b.addEventListener('click', (e) => { e.preventDefault(); if (m.id !== game.M.id) location.search = `?mundo=${m.id}`; });
+    fila.append(b);
+  }
   on('#b-nueva', () => game.start(false));
   on('#b-contrarreloj', () => game.start(true));
   // pausa
@@ -77,21 +89,25 @@ function setupMenus(game) {
 
 async function boot() {
   const assets = await preload();
-  label.textContent = 'Encendiendo Nácar…';
+  label.textContent = 'Encendiendo el mundo…';
   await new Promise(r => requestAnimationFrame(r));
   const sound = new Sound();
   const input = new Input();
   input.bindTouch($('#juego'));
   input.bindStick($('#stick'), $('#stick-base'), $('#stick-knob'));
-  const game = new Game(sound, input);
+  // qué mundo cargar: el de la URL, o el de la partida guardada, o Nácar
+  const q = new URLSearchParams(location.search), guardado = cargar();
+  const mundoId = q.get('mundo') || (guardado.progreso && guardado.progreso.mundo) || 'nacar';
+  const game = new Game(sound, input, mundoId);
   const world = new World($('#mundo'), game, assets);
   const hud = new Hud($('#hud'), game, world, assets);
   window.__dip = game; window.__world = world;
   setupDebug(game, world);
   const syncMenus = setupMenus(game);
-  const q = new URLSearchParams(location.search), sec = Number(q.get('seccion'));
+  const sec = Number(q.get('seccion'));
   if (sec >= 1 && sec <= 6) game.skipTo(sec);
   else if (q.has('contrarreloj') && game.save.completados[game.M.id]) game.start(true);
+  else if (q.has('continuar') && game.save.progreso) game.continuar();
 
   const resize = () => {
     const r = $('#juego').getBoundingClientRect();

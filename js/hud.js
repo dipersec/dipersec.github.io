@@ -82,7 +82,7 @@ export class Hud {
     const iri = c.createLinearGradient(W / 2 - 150, 0, W / 2 + 150, 0);
     iri.addColorStop(0, '#ffc8ee'); iri.addColorStop(0.5 + Math.sin(t) * 0.2, '#c8f0ff'); iri.addColorStop(1, '#d8c8ff');
     this.font(16, 'bold'); c.textAlign = 'center'; c.fillStyle = 'rgba(20,10,30,.5)'; c.fillText('EL ÚLTIMO RECUERDO DEL UNIVERSO', W / 2 + 1, y0 + 26.5); c.fillStyle = iri; c.fillText('EL ÚLTIMO RECUERDO DEL UNIVERSO', W / 2, y0 + 25);
-    this.font(11, 'normal'); this.text('Mundo 1 · Nácar, el planeta de la caída', W / 2, y0 + 46, '#efe6ff', 'center');
+    this.font(11, 'normal'); this.text(`Mundo ${g.M.n} · ${g.M.nombre}, ${g.M.subtitulo.charAt(0).toLowerCase() + g.M.subtitulo.slice(1)}`, W / 2, y0 + 46, '#efe6ff', 'center');
     if (!IS_TOUCH) {
       this.font(10, 'normal');
       this.text('Flechas o WASD: moverte · Espacio: saltar · X: girar · C: recordar · Esc: pausa', W / 2, H - 24, '#efe6ff', 'center');
@@ -101,11 +101,12 @@ export class Hud {
     if (g.trial) { this.font(16, '900', MONO); this.text(fmt(g.runTime), W - 14, 28, g.runTime <= g.M.medallas.oro ? C.oro : C.paper, 'right'); }
   }
   drawObjetivo(W, H) {
-    const g = this.g, o = g.objetivo; if (!o) return;
-    const c = this.ctx, n = g.L.piezas.filter(q => q.got).length, x = 12, y = 40;
-    this.pill(x, y, 150, 22, 'rgba(26,20,38,.72)', 'rgba(255,211,106,.6)');
+    const g = this.g; if (!g.objetivo) return;
+    const o = g.M.objetivo(g), c = this.ctx, n = o.n, x = 12, y = 40;
+    this.font(10, 'bold'); const ow = c.measureText(`${o.texto}  ${n}/${o.total}`).width + 36;
+    this.pill(x, y, ow, 22, 'rgba(26,20,38,.72)', 'rgba(255,211,106,.6)');
     c.save(); c.translate(x + 13, y + 11); c.rotate(t2(g.time)); c.fillStyle = C.oro; c.beginPath(); for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2, r = i % 2 ? 4.5 : 6.5; c.lineTo(Math.cos(a) * r, Math.sin(a) * r); } c.fill(); c.fillStyle = '#5a3a10'; c.beginPath(); c.arc(0, 0, 2, 0, 7); c.fill(); c.restore();
-    this.font(10, 'bold'); this.text(`Piezas del recolector  ${n}/3`, x + 26, y + 15, C.paper, 'left', false);
+    this.font(10, 'bold'); this.text(`${o.texto}  ${n}/${o.total}`, x + 26, y + 15, C.paper, 'left', false);
   }
   drawRecuerdo(W, H) {
     const g = this.g, m = g.memorias.activa; if (!m) return;
@@ -118,10 +119,10 @@ export class Hud {
     this.font(10, 'bold', MONO); this.text(`${Math.ceil(m.t)} s`, x + w - 8, y + 15, C.paper, 'right', false);
   }
   drawPrompt(W, H) {
-    const g = this.g, m = g.memorias.near; if (!m || g.dialog) return;
+    const g = this.g, sw = g.memorias.nearSwitch, m = g.memorias.near || sw; if (!m || g.dialog) return;
     const p = this.world.project(m.x, m.y + 1.9, m.z); if (!p.on) return;
-    const c = this.ctx, puede = g.memorias.puede;
-    const label = !puede ? 'Algo falta aquí…' : IS_TOUCH ? 'Recordar' : 'C · Recordar';
+    const c = this.ctx, puede = sw ? true : g.memorias.puede;
+    const label = sw && !g.memorias.near ? (IS_TOUCH ? 'Girar' : 'X · Girar') : !puede ? 'Algo falta aquí…' : IS_TOUCH ? 'Recordar' : 'C · Recordar';
     this.font(11, 'bold'); const w = c.measureText(label).width + 18;
     const x = p.x * W - w / 2, y = p.y * H - 22 + Math.sin(g.time * 4) * 2;
     this.pill(x, y, w, 20, puede ? 'rgba(20,40,60,.88)' : 'rgba(40,36,50,.75)', puede ? C.cian : 'rgba(255,255,255,.3)');
@@ -130,10 +131,15 @@ export class Hud {
   drawBossBar(W, H) {
     const g = this.g, b = g.boss; if (!b.active) return;
     const c = this.ctx, w = 190, x = W / 2 - w / 2, y = 14;
-    this.font(10, 'bold'); this.text('GUARDIÁN DE LA ESTACIÓN', W / 2, y + 2, '#d8f4ff', 'center');
+    this.font(10, 'bold'); this.text(g.M.jefe.toUpperCase(), W / 2, y + 2, '#d8f4ff', 'center');
     for (let i = 0; i < b.total; i++) {
       const on = i >= b.lost, px = x + i * (w / b.total);
       c.fillStyle = on ? '#7fe6ff' : 'rgba(255,255,255,.15)'; c.fillRect(px + 1, y + 7, w / b.total - 3, 7);
+    }
+    if (b.aviso > 0) {
+      c.globalAlpha = 0.6 + Math.sin(this.g.time * 18) * 0.4;
+      this.font(15, '900'); this.text('¡LA GRAVEDAD VA A CAMBIAR!', W / 2, 74, C.oro, 'center');
+      c.globalAlpha = 1;
     }
     if (b.phase === 3 && b.ordenT > 0) {
       const a = Math.min(1, b.ordenT / 0.3, (2.6 - b.ordenT) / 0.15 + 0.2);
@@ -147,7 +153,7 @@ export class Hud {
     const s = this.g.sectionCard; if (!s) return;
     const c = this.ctx, a = Math.max(0, Math.min(1, s.t / 0.4, (3.2 - s.t) / 0.6));
     c.globalAlpha = a;
-    this.font(10, 'bold'); this.text(`NÁCAR · FASE ${s.n}`, W / 2, 112, C.cian, 'center');
+    this.font(10, 'bold'); this.text(`${this.g.M.nombre.toUpperCase()} · FASE ${s.n}`, W / 2, 112, C.cian, 'center');
     this.font(22, '900'); this.text(s.name, W / 2, 136, C.paper, 'center');
     c.globalAlpha = 1;
   }
@@ -213,6 +219,15 @@ export class Hud {
       c.fillStyle = '#071a22'; c.fillRect(px + 6, py + 10, ps - 12, ps - 20); c.strokeStyle = '#5ae0ff'; c.lineWidth = 2; c.strokeRect(px + 6, py + 10, ps - 12, ps - 20);
       c.fillStyle = '#5ae0ff'; for (let i = 0; i < 4; i++) c.fillRect(px + 11, py + 16 + i * 7, 18 + (i * 11) % 16, 3); return;
     }
+    if (who === 'constructor') {
+      c.fillStyle = '#e8b84a'; c.beginPath(); c.arc(cx, cy - 2, 16, Math.PI, 0); c.fill(); c.fillRect(cx - 19, cy - 3, 38, 4);
+      c.fillStyle = '#6a7a9a'; c.fillRect(cx - 13, cy + 1, 26, 20); c.fillStyle = '#9ff0ff'; c.fillRect(cx - 9, cy + 6, 6, 5); c.fillRect(cx + 3, cy + 6, 6, 5); return;
+    }
+    if (who === 'arquitecto') {
+      c.fillStyle = '#0e1a3a'; c.fillRect(px, py, ps, ps);
+      c.strokeStyle = '#ffd36a'; c.lineWidth = 2; c.beginPath(); c.moveTo(cx, cy - 18); c.lineTo(cx - 14, cy + 16); c.moveTo(cx, cy - 18); c.lineTo(cx + 14, cy + 16); c.stroke();
+      c.beginPath(); c.arc(cx, cy - 2, 9, 0, 7); c.stroke(); c.fillStyle = '#9ff0ff'; c.fillRect(cx - 3, cy - 5, 6, 6); return;
+    }
     if (who === 'registro') {
       c.fillStyle = '#2a2f52'; c.fillRect(px + 12, py + 6, 30, 42); c.strokeStyle = '#9fe8ff'; c.lineWidth = 2; c.strokeRect(px + 12, py + 6, 30, 42);
       c.fillStyle = '#bff2ff'; for (let i = 0; i < 5; i++) c.fillRect(px + 16, py + 12 + i * 7, 14 + (i * 7) % 9, 2.5);
@@ -237,8 +252,8 @@ export class Hud {
     const bg = c.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#f4eefc'); bg.addColorStop(1, '#e2d4f2'); c.fillStyle = bg; c.fillRect(0, 0, W, H);
     c.save(); c.translate(0, (H - 360) / 2);
     c.globalAlpha = Math.min(1, t / 1);
-    this.font(11, 'bold'); this.text(g.trial ? 'CONTRARRELOJ' : 'MUNDO 1 COMPLETADO', W / 2, 46, '#6a5aa0', 'center', false);
-    this.font(28, '900'); this.text('Nácar', W / 2, 76, C.ink, 'center', false);
+    this.font(11, 'bold'); this.text(g.trial ? 'CONTRARRELOJ' : `MUNDO ${g.M.n} COMPLETADO`, W / 2, 46, '#6a5aa0', 'center', false);
+    this.font(28, '900'); this.text(g.M.nombre, W / 2, 76, C.ink, 'center', false);
     const rows = [
       ['Tiempo', fmt(r.t) + (r.medal ? `  · medalla de ${r.medal}` : '')],
       ['Partículas', String(r.frags)],
@@ -248,19 +263,19 @@ export class Hud {
     ];
     rows.forEach(([k, v], i) => { const y = 104 + i * 18; this.font(12, 'normal'); this.text(k, W / 2 - 10, y, '#6a5a80', 'right', false); this.font(12, 'bold'); this.text(v, W / 2 + 10, y, C.ink, 'left', false); });
     c.globalAlpha = Math.max(0, Math.min(1, (t - 0.8) / 0.8));
-    this.font(11, 'bold'); this.text('Habilidad: Reconstrucción por memoria', W / 2, 206, '#2a7a9a', 'center', false);
-    this.font(10, 'normal'); this.text('«La estación registró a DIP antes del viaje. ¿Cómo?»', W / 2, 222, '#6a5a80', 'center', false);
-    // los siete mundos: solo Nácar está hecho; los demás se muestran como próximos, sin fingir que existen
+    this.font(11, 'bold'); this.text(`Habilidad: ${g.M.habilidad}`, W / 2, 206, '#2a7a9a', 'center', false);
+    this.font(10, 'normal'); this.text(`«${g.M.revelacion}»`, W / 2, 222, '#6a5a80', 'center', false);
+    // los siete mundos: los hechos se marcan; los demás se muestran como próximos, sin fingir que existen
     const n = MUNDOS.length, cw = Math.min(78, (W - 30) / n), x0 = W / 2 - (cw * n) / 2;
     MUNDOS.forEach((m, i) => {
-      const x = x0 + i * cw, done = g.save.completados[m.id];
+      const x = x0 + i * cw, done = g.save.completados[m.id] || (m.id === g.M.id && !g.trial);
       this.pill(x + 3, 238, cw - 6, 40, done ? 'rgba(106,255,200,.25)' : 'rgba(26,20,38,.08)', done ? '#2a9a7a' : 'rgba(26,20,38,.2)');
       this.font(9, 'bold'); this.text(`${m.n} · ${m.nombre}`, x + cw / 2, 254, done ? C.ink : '#8a7aa0', 'center', false);
-      this.font(8, 'normal'); this.text(done ? 'completado' : 'próximamente', x + cw / 2, 268, done ? '#2a7a6a' : '#9a8ab0', 'center', false);
+      this.font(8, 'normal'); this.text(done ? 'completado' : m.listo ? 'disponible' : 'próximamente', x + cw / 2, 268, done ? '#2a7a6a' : m.listo ? '#5a4a90' : '#9a8ab0', 'center', false);
     });
     c.globalAlpha = Math.max(0, Math.min(1, (t - 1.5) / 1));
-    this.font(11, 'bold'); this.text('Siguiente: Vértice, el planeta de las leyes rotas (próximamente)', W / 2, 300, '#a0602a', 'center', false);
-    if (t > 2.5 && Math.sin(t * 3) > -0.3) { this.font(11, 'bold'); this.text(IS_TOUCH ? 'Toca para volver al inicio' : 'Espacio: volver al inicio · T: contrarreloj', W / 2, 330, '#5a4a90', 'center', false); }
+    this.font(11, 'bold'); const sig = MUNDOS[g.M.n]; if (sig) this.text(`Siguiente: ${sig.nombre}, ${sig.subtitulo.charAt(0).toLowerCase() + sig.subtitulo.slice(1)}${sig.listo ? '' : ' (próximamente)'}`, W / 2, 300, '#a0602a', 'center', false);
+    if (t > 2.5 && Math.sin(t * 3) > -0.3) { this.font(11, 'bold'); const sig2 = g.siguienteMundo(), ir = sig2 && !g.trial ? `ir a ${sig2.nombre}` : 'volver al inicio'; this.text(IS_TOUCH ? `Toca para ${ir}` : `Espacio: ${ir} · T: contrarreloj`, W / 2, 330, '#5a4a90', 'center', false); }
     c.globalAlpha = 1; c.restore();
   }
 }

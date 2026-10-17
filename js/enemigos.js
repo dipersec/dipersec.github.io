@@ -27,6 +27,12 @@ export function updateBichos(g, dt) {
     b[k] += b.dir * speed * dt;
     if (Math.abs(b[k] - home) > b.range) { b[k] = home + Math.sign(b[k] - home) * b.range; b.dir *= -1; }
     b.glitch = Math.max(0, b.glitch - dt);
+    // saltadores del vacío: brincan cada cierto tiempo (se ve venir: se agachan antes)
+    if (b.salta) {
+      if (b.hy === undefined) b.hy = b.y;
+      b.vy = (b.vy || 0) - 20 * dt; b.y += b.vy * dt;
+      if (b.y <= b.hy) { b.y = b.hy; b.vy = 0; b.hopT = (b.hopT || 0) + dt; if (b.hopT > b.salta) { b.hopT = 0; b.vy = 7.5; } }
+    }
     if (b.t > 1.1 + Math.random() * 0.4) { b.t = 0; b.glitch = 0.12; }
     if (b.lleva) { const pz = g.L.piezas.find(q => q.carrier === b); if (pz) { pz.x = b.x; pz.y = b.y + 0.7; pz.z = b.z; } }
     if (p.hidden || p.state === STATE.DEAD) continue;
@@ -257,3 +263,17 @@ export function updateFalling(g, dt) {
   }
 }
 export { setState };
+
+// ---------- medusas de corriente: flotan subiendo y bajando; desde arriba rebotan, de lado pican ----------
+export function updateMedusas(g, dt) {
+  const p = g.player;
+  for (const q of g.L.medusas) {
+    q.t = (q.t || 0) + dt; q.squash = Math.max(0, (q.squash || 0) - dt * 4);
+    q.y = q.y0 + Math.sin(q.t / q.period * Math.PI * 2) * q.amp;
+    if (p.hidden || p.state === STATE.DEAD) continue;
+    if (Math.abs(p.pos.x - q.x) > 0.85 || Math.abs(p.pos.z - q.z) > 0.85) continue;
+    if ((p.gdir || 1) > 0 && p.vel.y < -0.5 && p.pos.y > q.y - 0.1 && p.pos.y < q.y + 0.6) {
+      bounce(p, 1.35); q.squash = 1; g.sound.sfx('medusa'); g.burst(q.x, q.y + 0.3, q.z, 10, [0.7, 0.95, 1], { speed: 3, life: 0.4 });
+    } else if (p.pos.y < q.y + 0.4 && p.pos.y + p.h > q.y - 0.9) g.hurt(q.x, q.z, 'medusa');
+  }
+}

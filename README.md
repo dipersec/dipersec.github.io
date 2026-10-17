@@ -1,6 +1,6 @@
 # DIP · El último recuerdo del universo
 
-Plataformas 3D de acción en corredor, al estilo clásico de cajas y saltos, con cámara detrás de DIP. La fuente de verdad narrativa es el *Documento maestro*. Está hecho el **Mundo 1: Nácar, el planeta de la caída**, completo y jugable de principio a fin. Los otros seis mundos tienen la estructura preparada y se muestran como "próximamente".
+Plataformas 3D de acción en corredor, al estilo clásico de cajas y saltos, con cámara detrás de DIP. La fuente de verdad narrativa es el *Documento maestro*. Están hechos el **Mundo 1: Nácar, el planeta de la caída** y el **Mundo 2: Vértice, el planeta de las leyes rotas**, completos y jugables de principio a fin. Vértice se abre al terminar Nácar (o directo con `?mundo=vertice`). Los otros cinco mundos tienen la estructura preparada y se muestran como "próximamente".
 
 ## Requisitos y cómo jugar
 - Un navegador con WebGL (Chrome, Edge, Firefox o Safari recientes, en computador o celular).
@@ -18,6 +18,7 @@ Plataformas 3D de acción en corredor, al estilo clásico de cajas y saltos, con
 **Menús.** En el título puedes elegir *Continuar* (si hay partida guardada), *Nueva partida*, *Contrarreloj* (después de terminar Nácar) y *Ajustes*. En la pausa puedes volver al punto de control, ir al menú, abrir los ajustes (volumen y **reducir efectos visuales intensos**) y leer los registros encontrados.
 
 **URLs de prueba**
+- `?mundo=vertice` carga el Mundo 2 (por defecto, Nácar o el de la partida guardada).
 - `?seccion=1..6` empieza en una fase, con todo lo anterior resuelto.
 - `?contrarreloj` activa el modo contrarreloj.
 - `?debug` (o la tecla `` ` ``) abre el panel de afinado en vivo, que también mide fps y draw calls.
@@ -43,6 +44,15 @@ Plataformas 3D de acción en corredor, al estilo clásico de cajas y saltos, con
 - Si mueres 5 veces en el mismo tramo, recibes una concha de regalo; con 10, aparece un punto de control extra.
 - Volver a tener el control después de morir toma unos 1 s.
 
+## Vértice, fase por fase
+La mecánica del mundo es la **gravedad por zonas**: ligera (saltas el doble), invertida (DIP cae hacia arriba y camina por el techo) y pesada (casi no despega).
+1. **La caída invertida.** DIP cae del cielo sobre la primera isla. Un salto largo con gravedad ligera, medusas que sirven de trampolín, saltadores del vacío y la primera caminata por el techo de una isla.
+2. **El valle de las cascadas ascendentes.** Cascadas que suben a DIP a islas más altas, anguilas de corriente, burbujas de presión, un centinela de piedra y un mecanismo que se activa girando y conecta las islas.
+3. **La ciudad suspendida.** Ciudad blanca de cúpulas doradas: plataformas móviles (una que avanza y otra que sube), rutas que se desconectan, drones de tránsito y los constructores ("Construimos hacia abajo. O hacia arriba. Según quién nos mire.").
+4. **La cámara de las leyes.** Tres dispositivos cambian los campos: el primero da gravedad ligera para subir una grada alta, el segundo invierte el campo para cruzar el abismo por el techo y el tercero apaga un campo pesado. Además, un duplicado gravitatorio que repite tus pasos, y la ciudad que empieza a inclinarse.
+5. **La torre central: el Arquitecto de Vértice.** Deja caer bloques donde estás (su sombra avisa) y luego abre su núcleo y muestra un símbolo: hay que girar junto al nodo con el mismo símbolo (triángulo, círculo o cuadrado; la forma, no solo el color). En las fases 2 y 3 invierte la gravedad de la sala con aviso y el nodo correcto puede estar en el techo. Son 7 golpes; no es un villano plano: "Diseñé un mundo sin errores… y no dejé espacio para nada nuevo."
+6. **La memoria del océano.** DIP recuerda un océano que fluía hacia arriba y forma un puente de agua. Islas que se sueltan, corrientes errantes y una última cascada. Al final las islas se estabilizan, pero una región lejana cambia, y Lunex lo comenta.
+
 ## Arquitectura
 ```
 index.html               canvas + HUD + menús (título, pausa, ajustes) + controles táctiles
@@ -62,9 +72,11 @@ js/textures.js           texturas procedurales HD
 js/audio.js              Web Audio sintetizado: música por zona, efectos y voces por personaje
 js/sprites.js            sprite SNES de DIP (48 px) sin cambios de diseño
 js/mundos/registro.js    los 7 mundos (solo los "listos" se juegan)
-js/mundos/nacar/         nivel.js (datos), historia.js (escenas y textos), guardian.js (jefe), escena.js (paisaje y personajes)
+js/mundos/comun.js       escenas que comparten todos los mundos (reaparecer)
+js/mundos/nacar/         nivel.js (datos), historia.js (escenas y textos), reglas.js, guardian.js (jefe), escena.js (paisaje y personajes)
+js/mundos/vertice/       nivel.js, historia.js, reglas.js, arquitecto.js (jefe), escena.js
 ```
-- **Agregar un mundo** consiste en crear `js/mundos/<mundo>/` con las mismas cuatro piezas y marcarlo como `listo` en el registro. La física, la cámara, la memoria, los enemigos y el HUD no cambian.
+- **Agregar un mundo** consiste en crear `js/mundos/<mundo>/` con las mismas cinco piezas y marcarlo como `listo` en el registro. La física, la cámara, la memoria, los enemigos y el HUD no cambian.
 - **Visual.** Solo DIP es pixel art. Tilo, el Guardián, Lunex y todo el mundo son 3D HD, con tone mapping ACES, sombras suaves, materiales nacarados iridiscentes y resolución adaptativa. La geometría estática se fusiona por material y lo lejano se recorta por distancia, así que hay entre 70 y 190 draw calls según la fase.
 - **Nombres.** Son los exactos del documento: DIP, Lunex, Nácar, Vértice, Horalia, Lúmen, Miral, El Archivo y El Umbral.
 
@@ -78,6 +90,7 @@ js/mundos/nacar/         nivel.js (datos), historia.js (escenas y textos), guard
   - Jefe completo (7 golpes).
   - Huida: un bot llega en ~17 s sin morir, con ~7 m de margen.
   - Final y guardado/continuar.
+  - Vértice: gravedad ligera, caminar por el techo y volver, cascadas, mecanismos, plataformas móviles, los tres dispositivos de las leyes, el Arquitecto completo (7 golpes), el puente de agua y el final.
 - **Pendiente:**
   - Medir fps en un celular real (en la simulación sin GPU no se puede).
-  - Los mundos 2 a 7.
+  - Los mundos 3 a 7.

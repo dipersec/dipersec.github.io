@@ -27,6 +27,8 @@ function blotches(x, r, n, w, h, colors, alpha) {
   }
 }
 const make = (w, h, draw) => { const c = canvas(w, h); draw(c.getContext('2d'), w, h); return c; };
+// para que cada mundo dibuje sus propias texturas con los mismos ayudantes
+export function texCanvas(renderer, w, h, draw, opts) { return finish(make(w, h, (x, W, H) => draw(x, W, H, { rng, grain, blotches })), renderer, opts); }
 
 export function makeTextures(renderer) {
   const T = {};

@@ -33,16 +33,23 @@ export function moveAndCollide(e, solids, dt, stepHeight = 0) {
   const prevY = e.pos.y;
   e.pos.y += e.vel.y * dt;
   e.onGround = false; e.ground = null; e.ceiling = null;
+  const inv = e.gdir === -1;   // gravedad invertida: el "suelo" es la cara de abajo de los sólidos
   for (const s of solids) {
     if (!on(s) || s === e.self) continue;
     if (s.oneWay) {
-      if (e.vel.y <= 0 && prevY >= s.y1 - 0.02 && overlaps(e, s)) { e.pos.y = s.y1; e.vel.y = 0; e.onGround = true; e.ground = s; }
+      if (!inv && e.vel.y <= 0 && prevY >= s.y1 - 0.02 && overlaps(e, s)) { e.pos.y = s.y1; e.vel.y = 0; e.onGround = true; e.ground = s; }
       continue;
     }
     if (!overlaps(e, s)) continue;
-    if (e.vel.y <= 0 && prevY >= s.y1 - 0.05) { e.pos.y = s.y1; e.onGround = true; e.ground = s; e.landVel = e.vel.y; }
-    else if (e.vel.y > 0) { e.pos.y = s.y0 - e.h; e.ceiling = s; }
-    else { e.pos.y = s.y1; e.onGround = true; e.ground = s; }
+    if (!inv) {
+      if (e.vel.y <= 0 && prevY >= s.y1 - 0.05) { e.pos.y = s.y1; e.onGround = true; e.ground = s; e.landVel = e.vel.y; }
+      else if (e.vel.y > 0) { e.pos.y = s.y0 - e.h; e.ceiling = s; }
+      else { e.pos.y = s.y1; e.onGround = true; e.ground = s; }
+    } else {
+      if (e.vel.y >= 0 && prevY + e.h <= s.y0 + 0.05) { e.pos.y = s.y0 - e.h; e.onGround = true; e.ground = s; e.landVel = e.vel.y; }
+      else if (e.vel.y < 0) { e.pos.y = s.y1; e.ceiling = s; }
+      else { e.pos.y = s.y0 - e.h; e.onGround = true; e.ground = s; }
+    }
     e.vel.y = 0;
   }
 }
@@ -55,4 +62,14 @@ export function groundBelow(x, y, z, solids, r = 0.2) {
     if (s.y1 > best) best = s.y1;
   }
   return best === -Infinity ? null : best;
+}
+
+// Superficie justo encima (para la sombra cuando la gravedad está invertida).
+export function groundAbove(x, y, z, solids, r = 0.2) {
+  let best = Infinity;
+  for (const s of solids) {
+    if (!on(s) || s.noShadow || x + r < s.x0 || x - r > s.x1 || z + r < s.z0 || z - r > s.z1 || s.y0 < y - 0.05) continue;
+    if (s.y0 < best) best = s.y0;
+  }
+  return best === Infinity ? null : best;
 }
